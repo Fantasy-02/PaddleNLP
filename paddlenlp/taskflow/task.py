@@ -21,7 +21,7 @@ from multiprocessing import cpu_count
 
 import paddle
 from paddle.dataset.common import md5file
-
+from paddle.base.framework import use_pir_api
 from ..utils.env import PPNLP_HOME
 from ..utils.log import logger
 from .utils import cut_chinese_sent, download_check, download_file, dygraph_mode_guard
@@ -187,11 +187,13 @@ class Task(metaclass=abc.ABCMeta):
         except ImportError:
             raise ImportError("Please install the dependencies first, pip install paddleocr")
         self._layout_analysis_engine = PPStructure(table=False, ocr=True, show_log=False)
-
+        
     def _prepare_static_mode(self):
         """
         Construct the input data and predictor in the PaddlePaddele static mode.
         """
+        if self._dtype == "bfloat16":
+            self._config.delete_pass("gpu_cpu_map_matmul_v2_to_matmul_pass")
         if paddle.get_device() == "cpu":
             self._config.disable_gpu()
             self._config.enable_mkldnn()
@@ -212,6 +214,10 @@ class Task(metaclass=abc.ABCMeta):
             # TODO(linjieccc): enable after fixed
             self._config.delete_pass("embedding_eltwise_layernorm_fuse_pass")
             self._config.delete_pass("fused_multi_transformer_encoder_pass")
+            
+        self._config.switch_ir_optim(True)
+        self._config.enable_new_executor()
+        
         self._config.set_cpu_math_library_num_threads(self._num_threads)
         self._config.switch_use_feed_fetch_ops(False)
         self._config.disable_glog_info()
@@ -223,11 +229,15 @@ class Task(metaclass=abc.ABCMeta):
             self._config.switch_ir_optim(False)
         if self.model == "uie-data-distill-gp":
             self._config.enable_memory_optim(False)
-
+        print('config:',self._config)
         self.predictor = paddle.inference.create_predictor(self._config)
+        print('self.predictor:',self.predictor)
         self.input_names = [name for name in self.predictor.get_input_names()]
+        print('self.input_names:',self.input_names)
         self.input_handles = [self.predictor.get_input_handle(name) for name in self.predictor.get_input_names()]
+        print('self.input_handles:',self.input_handles)
         self.output_handle = [self.predictor.get_output_handle(name) for name in self.predictor.get_output_names()]
+        print('self.output_handle:',self.output_handle)
 
     def _prepare_onnx_mode(self):
         try:
@@ -281,7 +291,6 @@ class Task(metaclass=abc.ABCMeta):
         """
         if self._custom_model:
             param_path = os.path.join(self._task_path, "model_state.pdparams")
-
             if os.path.exists(param_path):
                 cache_info_path = os.path.join(self._task_path, ".cache_info")
                 md5 = md5file(param_path)
@@ -317,6 +326,7 @@ class Task(metaclass=abc.ABCMeta):
 
         # When the user-provided model path is already a static model, skip to_static conversion
         if self.is_static_model:
+        # if True:
             self.inference_model_path = os.path.join(self._task_path, self._static_model_name)
             if not os.path.exists(self.inference_model_path + ".pdmodel") or not os.path.exists(
                 self.inference_model_path + ".pdiparams"
@@ -335,13 +345,16 @@ class Task(metaclass=abc.ABCMeta):
                 if not self.from_hf_hub
                 else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
             )
-            self.inference_model_path = os.path.join(_base_path, "static", "inference")
+            print('base_path:', _base_path)
+            self.inference_model_path = os.path.join(_base_path, "static", "model")
+            # self.inference_model_path = "/root/env_run/huangziyi/github/PaddleNLP/llm/qwen/model"
             if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
                 with dygraph_mode_guard():
+                    # print('self.model',self.model)
                     self._construct_model(self.model)
                     self._construct_input_spec()
                     self._convert_dygraph_to_static()
-
+        self._static_json_file = self.inference_model_path + '.json'
         self._static_model_file = self.inference_model_path + ".pdmodel"
         self._static_params_file = self.inference_model_path + ".pdiparams"
 
@@ -368,7 +381,12 @@ class Task(metaclass=abc.ABCMeta):
             self._static_model_file = self._static_fp16_model_file
             self._static_params_file = self._static_fp16_params_file
         if self._predictor_type == "paddle-inference":
-            self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
+            if use_pir_api():
+                print('use_pir_api')
+                self._config = paddle.inference.Config(self._static_json_file, self._static_params_file)
+                print('self._config:',dir(self._config))
+            else:
+                self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
             self._prepare_static_mode()
         else:
             self._prepare_onnx_mode()
@@ -384,8 +402,9 @@ class Task(metaclass=abc.ABCMeta):
             self._input_spec is not None
         ), "The input spec must be created before converting the dygraph model to static model."
         logger.info("Converting to the inference model cost a little time.")
-        static_model = paddle.jit.to_static(self._model, input_spec=self._input_spec)
-
+        # print(self._model)
+        static_model = paddle.jit.to_static(self._model.generate, input_spec=self._input_spec)
+        # print('static_model:',static_model)
         paddle.jit.save(static_model, self.inference_model_path)
         logger.info("The inference model save in the path:{}".format(self.inference_model_path))
 

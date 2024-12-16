@@ -23,7 +23,7 @@ from .dependency_parsing import DDParserTask
 from .dialogue import DialogueTask
 from .document_intelligence import DocPromptTask
 from .fill_mask import FillMaskTask
-from .information_extraction import GPTask, UIETask
+from .information_extraction import GPTask, UIETask,QwenIETask
 from .knowledge_mining import NPTagTask, WordTagTask
 from .lexical_analysis import LacTask
 from .multimodal_feature_extraction import MultimodalFeatureExtractionTask
@@ -314,6 +314,9 @@ TASKS = {
     },
     "information_extraction": {
         "models": {
+            "llama": {"task_class": QwenIETask, "hidden_size": 768, "task_flag": "information_extraction-llama"},
+            "qwen-1.5b": {"task_class": QwenIETask, "hidden_size": 768, "task_flag": "information_extraction-qwen-1.5b"},
+            "qwen-0.5b": {"task_class": QwenIETask, "hidden_size": 768, "task_flag": "information_extraction-qwen-0.5b"},
             "uie-base": {"task_class": UIETask, "hidden_size": 768, "task_flag": "information_extraction-uie-base"},
             "uie-medium": {
                 "task_class": UIETask,
@@ -693,6 +696,8 @@ TASKS = {
 }
 
 support_schema_list = [
+    "qwen-1.5b",
+    "qwen-0.5b",
     "uie-base",
     "uie-medium",
     "uie-mini",
@@ -725,6 +730,9 @@ support_schema_list = [
 ]
 
 support_argument_list = [
+    'llama',
+    'qwen-1.5b',
+    'qwen-0.5b',
     "dalle-mini",
     "dalle-mega",
     "dalle-mega-v16",
