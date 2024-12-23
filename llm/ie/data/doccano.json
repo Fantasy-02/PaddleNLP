@@ -1,0 +1,3 @@
+{"id":21,"text":"6月10日加班打车回家25元","entities":[{"id":11,"label":"时间","start_offset":0,"end_offset":5},{"id":12,"label":"地点","start_offset":10,"end_offset":11}],"relations":[],"Comments":[]}
+{"id":22,"text":"消失的“外企光环”，5月份在华裁员900余人，香饽饽变“臭”了","entities":[{"id":3,"label":"时间","start_offset":10,"end_offset":13},{"id":14,"label":"裁员人数","start_offset":17,"end_offset":22},{"id":15,"label":"裁员触发词","start_offset":15,"end_offset":17}],"relations":[],"Comments":[]}
+{"id":23,"text":"法治讲座进校园,上好“社会第一课”——喀什市人民法院开展“法治进校园”系列讲座","entities":[{"id":4,"label":"地点","start_offset":19,"end_offset":26},{"id":13,"label":"地点","start_offset":28,"end_offset":39}],"relations":[{"id":3,"from_id":4,"to_id":13,"type":"开展"}],"Comments":[]}
