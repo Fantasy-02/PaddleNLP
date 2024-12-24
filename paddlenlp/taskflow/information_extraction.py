@@ -130,10 +130,9 @@ class QwenIETask(Task):
         self._temperature = kwargs.get("temperature", 1.0)
         self._decode_strategy = kwargs.get("decode_strategy", "sampling")
         self._num_return_sequences = kwargs.get("num_return_sequences", 1)
-        # self._task_path = "/root/env_run/huangziyi/github/PaddleNLP/llm/qwen/"
         self._construct_tokenizer(model)
         if self._static_mode:
-            self._get_inference_model()
+            self._get_llm_static_model()
         else:
             self._construct_model(model)
         self._construct_input_spec()
@@ -180,11 +179,14 @@ class QwenIETask(Task):
            1) Transform the raw text to token ids.
            2) Generate the other model inputs from the raw text and token ids.
         """
+        # print("origin_inputs:",inputs)
         inputs = self._check_input_text(inputs)
+        # print("checked_inputs:",inputs)
         # Get the config from the kwargs
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         batches = self._batchify(inputs, batch_size)
         examples = []
+        print("chat_tempalte",self._tokenizer.chat_template is None)
         for input_text in batches:
             if self._static_mode:
                 tokenized_output = self._tokenizer(
@@ -192,6 +194,7 @@ class QwenIETask(Task):
                     return_tensors="np",
                     return_position_ids=True,
                     padding=True,
+                    padding_side="left",
                     max_length=self._max_seq_length,
                     truncation=True,
                     truncation_side="left",
@@ -202,6 +205,7 @@ class QwenIETask(Task):
                     input_text,
                     return_tensors="pd",
                     return_position_ids=True,
+                    padding_side="left",
                     padding=True,
                     max_length=self._max_seq_length,
                     truncation=True,
@@ -224,18 +228,18 @@ class QwenIETask(Task):
             with static_mode_guard():
                 for batch in inputs["data_loader"]:
                     # print("input_ids:",batch["input_ids"])
-                    batch["max_new_tokens"] = np.array(4096)
+                    batch["max_new_tokens"] = np.array(20)
                     batch["top_p"] = np.array(self._top_p)
                     batch["temperature"] = np.array(self._temperature)
                     input_ids = batch["input_ids"]
                     position_ids = batch["position_ids"]
                     attention_mask = batch["attention_mask"]
                     for name in self.predictor.get_input_names():
-                        print(name)
+                        print(f"{name}:",batch[name])
                         self.predictor.get_input_handle(name).copy_from_cpu(batch[name])
                     self.predictor.run()
                     result = self.output_handle[0].copy_to_cpu().tolist() # logits = (batch,seq_len,vocab_size)
-                    print(result)
+                    # print(result)
                     results.extend(result)
                     # results.append(result[0][0])
                     # while True:
@@ -276,7 +280,8 @@ class QwenIETask(Task):
                     top_k=self._top_k,
                     top_p=self._top_p,
                     temperature=self._temperature,
-                    max_length=self._tgt_length,
+                    # max_length=self._tgt_length,
+                    max_length = 20,
                     bos_token_id=self._tokenizer.bos_token_id,
                     eos_token_id=self._tokenizer.eos_token_id,
                     pad_token_id=self._tokenizer.pad_token_id,
@@ -321,12 +326,12 @@ class QwenIETask(Task):
         else:
             input_spec_dtype = "int64"
         self._input_spec = [
-                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),
-                False,
-                paddle.static.InputSpec(shape=[None,], dtype=input_spec_dtype, name="streamer"),
-                1
-                # paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
-                # paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),                
+                # False,
+                # paddle.static.InputSpec(shape=[None,], dtype=input_spec_dtype, name="streamer"),
+                # 1
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
                 # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "max_new_tokens"),
                 # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "top_p"),
                 # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "temperature"),
@@ -373,136 +378,7 @@ class QwenIETask(Task):
                 # # use_cache
                 # True,
                 ]
-    def _single_stage_predict(self, inputs):
-        input_texts = [d["text"] for d in inputs]
-        print('input_texts:',input_texts)
-        # print('input_texts:',input_texts)
-        # print('prompts:',prompts)
-        # max predict length should exclude the length of prompt and summary tokens
-        max_predict_len = self._max_seq_len - self._summary_token_num
 
-        short_inputs = [
-            {"text": input_texts[i] for i in range(len(input_texts))}
-        ]
-
-        def text_reader(inputs):
-            for example in inputs:
-                if self._dynamic_max_length is not None:
-                    temp_encoded_inputs = self._tokenizer(
-                        text=[example["text"]],
-                        truncation=True,
-                        max_seq_len=self._max_seq_len,
-                        return_attention_mask=True,
-                        return_position_ids=True,
-                        return_dict=False,
-                        return_offsets_mapping=True,
-                    )
-                    max_length = get_dynamic_max_length(
-                        examples=temp_encoded_inputs,
-                        default_max_length=self._max_seq_len,
-                        dynamic_max_length=self._dynamic_max_length,
-                    )
-                    encoded_inputs = self._tokenizer(
-                        text=[example["text"]],
-                        truncation=True,
-                        max_seq_len=max_length,
-                        pad_to_max_seq_len=True,
-                        return_attention_mask=True,
-                        return_position_ids=True,
-                        return_offsets_mapping=True,
-                    )
-                    logger.info("Inference with dynamic max length in {}".format(max_length))
-                else:
-                    encoded_inputs = self._tokenizer(
-                        text=[example["text"]],
-                        truncation=True,
-                        max_seq_len=self._max_seq_len,
-                        pad_to_max_seq_len=True,
-                        return_attention_mask=True,
-                        return_position_ids=True,
-                        return_offsets_mapping=True,
-                    )
-                if self._init_class in ["UIEM"]:
-                    tokenized_output = [
-                        encoded_inputs["input_ids"][0],
-                        encoded_inputs["position_ids"][0],
-                        encoded_inputs["offset_mapping"][0],
-                    ]
-                else:
-                    tokenized_output = [
-                        encoded_inputs["input_ids"][0],
-                        encoded_inputs["position_ids"][0],
-                        encoded_inputs["attention_mask"][0],
-                    ]
-                tokenized_output = [np.array(x, dtype="int64") for x in tokenized_output]
-                yield tuple(tokenized_output)
-
-        
-
-        reader = text_reader
-        infer_ds = load_dataset(reader, inputs=short_inputs, lazy=self._lazy_load)
-        batch_sampler = paddle.io.BatchSampler(dataset=infer_ds, batch_size=self._batch_size, shuffle=False)
-
-        infer_data_loader = paddle.io.DataLoader(
-            dataset=infer_ds, batch_sampler=batch_sampler, num_workers=self._num_workers, return_list=True
-        )
-
-        sentence_ids = []
-        probs = []
-        results = []
-        for batch in infer_data_loader:
-            if self._init_class in ["UIEX"]:
-                input_ids, token_type_ids, pos_ids, att_mask, bbox, image, offset_maps = batch
-            elif self._init_class in ["UIEM"]:
-                input_ids, pos_ids, offset_maps = batch
-            else:
-                input_ids, pos_ids, att_mask = batch
-            if self._predictor_type == "paddle-inference":
-                if self._init_class in ["UIEX"]:
-                    self.input_handles[0].copy_from_cpu(input_ids.numpy())
-                    self.input_handles[1].copy_from_cpu(token_type_ids.numpy())
-                    self.input_handles[2].copy_from_cpu(pos_ids.numpy())
-                    self.input_handles[3].copy_from_cpu(att_mask.numpy())
-                    self.input_handles[4].copy_from_cpu(bbox.numpy())
-                    self.input_handles[5].copy_from_cpu(image.numpy())
-                elif self._init_class in ["UIEM"]:
-                    self.input_handles[0].copy_from_cpu(input_ids.numpy())
-                    self.input_handles[1].copy_from_cpu(pos_ids.numpy())
-                else:
-                    with static_mode_guard():
-                        print(self.input_handles)
-                        self.input_handles[0].copy_from_cpu(input_ids.numpy())
-                    # self.input_handles[1].copy_from_cpu(pos_ids.numpy())
-                    # self.input_handles[2].copy_from_cpu(att_mask.numpy())
-                # loaded_model = paddle.jit.load(self.inference_model_path)
-                # loaded_model.eval()
-                # print(loaded_model)
-                # print(input_ids.shape)
-                # pred = loaded_model(input_ids)
-                # print(pred)
-                # print(self._model)
-                # result = self._model.generate(
-                #     **inputs,
-                # )
-                # print(result)
-                        self.predictor.run()
-                        outputs = self.output_handle[0].copy_to_cpu().tolist()
-                        print("outputs:",len(outputs))
-                
-            results.extend(outputs)
-            inputs["results"] = results
-
-        return inputs
-        #     start_ids_list = get_bool_ids_greater_than(start_prob, limit=self._position_prob, return_prob=True)
-        #     end_ids_list = get_bool_ids_greater_than(end_prob, limit=self._position_prob, return_prob=True)
-        #     for start_ids, end_ids, offset_map in zip(start_ids_list, end_ids_list, offset_maps.tolist()):
-        #         span_set = get_span(start_ids, end_ids, with_prob=True)
-        #         sentence_id, prob = get_id_and_prob(span_set, offset_map)
-        #         sentence_ids.append(sentence_id)
-        #         probs.append(prob)
-        # results = self._convert_ids_to_results(short_inputs, sentence_ids, probs)
-        # results = self._auto_joiner(results, short_input_texts, input_mapping)
-        # return results
 class UIETask(Task):
     """
     Universal Information Extraction Task.
