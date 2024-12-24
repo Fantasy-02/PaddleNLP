@@ -192,8 +192,6 @@ class Task(metaclass=abc.ABCMeta):
         """
         Construct the input data and predictor in the PaddlePaddele static mode.
         """
-        if self._dtype == "bfloat16":
-            self._config.delete_pass("gpu_cpu_map_matmul_v2_to_matmul_pass")
         if paddle.get_device() == "cpu":
             self._config.disable_gpu()
             self._config.enable_mkldnn()

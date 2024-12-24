@@ -38,17 +38,17 @@ def add_inference_args_to_config(model_config, args):
 
 def run_export(dtype,model_name_or_path,output_path):
     from paddlenlp.trainer import PdArgumentParser
-    from predictor import create_predictor, ModelArgument, PredictorArgument
+    from llm.predict.predictor import create_predictor, ModelArgument, PredictorArgument
     from paddlenlp.trl import llm_utils
     parser = PdArgumentParser((PredictorArgument, ModelArgument, ExportArgument))
     predictor_args, model_args, export_args = parser.parse_args_into_dataclasses()
-    print("PredictorArgument:", PredictorArgument.__annotations__)
-    print("ModelArgument:", ModelArgument.__annotations__)
-    print("ExportArgument:", ExportArgument.__annotations__)
+    
     predictor_args.dtype = dtype
     predictor_args.model_name_or_path = model_name_or_path
-    export_args.output_path = output_path
     predictor_args.cachekv_int8_type = False
+
+    export_args.output_path = output_path
+    
     paddle.set_default_dtype(predictor_args.dtype)
     tensor_parallel_degree = paddle.distributed.get_world_size()
     tensor_parallel_rank = paddle.distributed.get_rank()
@@ -67,11 +67,6 @@ def run_export(dtype,model_name_or_path,output_path):
     # set predictor type
     predictor = create_predictor(predictor_args, model_args, tensor_parallel_degree, tensor_parallel_rank)
     predictor.model.eval()
-    print("export_args.output_path:",export_args.output_path)
-    print("predictor_args.model_prefix:",predictor_args.model_prefix)
-    print("predictor_args.dtype:",predictor_args.dtype)
-    print("export_precache:",predictor_args.export_precache)
-    print("predictor_args.cachekv_int8_type:",predictor_args.cachekv_int8_type)
     predictor.model.to_static(
         llm_utils.get_infer_model_path(export_args.output_path, predictor_args.model_prefix),
         {

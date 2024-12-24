@@ -116,7 +116,7 @@ def get_dynamic_max_length(examples, default_max_length: int, dynamic_max_length
     return max_length
 
 class QwenIETask(Task):
-    def __init__(self, task, model, **kwargs):
+    def __init__(self, task, model, schema, **kwargs):
         super().__init__(task=task, model=model, **kwargs)
         # Default to static mode
         self._static_mode = True
@@ -130,22 +130,38 @@ class QwenIETask(Task):
         self._temperature = kwargs.get("temperature", 1.0)
         self._decode_strategy = kwargs.get("decode_strategy", "sampling")
         self._num_return_sequences = kwargs.get("num_return_sequences", 1)
+        self.prompt = """你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
+**句子开始**
+{sentence}
+**句子结束**
+**问题开始**
+{prompt}
+**问题结束**
+**回答开始**
+"""
         self._construct_tokenizer(model)
+        self.set_schema(schema)
         if self._static_mode:
             self._get_llm_static_model()
         else:
             self._construct_model(model)
         self._construct_input_spec()
         
-    
+        if not schema:
+            logger.warning(
+                "The schema has not been set yet, please set a schema via set_schema(). "
+                "More details about the setting of schema please refer to https://github.com/PaddlePaddle/PaddleNLP/blob/develop/applications/information_extraction/taskflow_text.md"
+            )
+            self._schema_tree = None
+        else:
+            self.set_schema(schema)
 
-
+        self._is_en = False 
+            
     def _construct_model(self, model):
         """
         Construct the inference model for the predictor.
         """
-        
-        print(model)
         model_instance = AutoModelForCausalLM.from_pretrained(
             self._task_path,dtype = "float16"
         )
@@ -155,9 +171,7 @@ class QwenIETask(Task):
         """
         Construct the tokenizer for the predictor.
         """
-        # self._task_path = "/root/env_run/huangziyi/github/PaddleNLP/llm/static/"
         self._tokenizer = AutoTokenizer.from_pretrained(self._task_path)
-        # self._tokenizer.add_special_tokens({'pad_token': '[PAD]'})
 
     def _batchify(self, data, batch_size):
         """
@@ -179,14 +193,50 @@ class QwenIETask(Task):
            1) Transform the raw text to token ids.
            2) Generate the other model inputs from the raw text and token ids.
         """
-        # print("origin_inputs:",inputs)
         inputs = self._check_input_text(inputs)
-        # print("checked_inputs:",inputs)
+        print("checked_inputs:",inputs)
+        return inputs
+        
+        
+    def _run_model(self, inputs):
+        """
+        Run the task model from the outputs of the `_tokenize` function.
+        """
+        results = self._multi_stage_predict(inputs)
+        return results
+        
+    
+    def _postprocess(self, inputs):
+        """
+        The model output is tag ids, this function will convert the model output to raw text.
+        """
+        return inputs
+        
+    def _construct_input_spec(self):
+        """
+        Construct the input spec for the convert dygraph model to static model.
+        """
+        print(paddle.get_device())
+        if paddle.get_device().split(":", 1)[0] == "npu":
+            input_spec_dtype = "int32"
+        else:
+            input_spec_dtype = "int64"
+        self._input_spec = [
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),                
+                # False,
+                # paddle.static.InputSpec(shape=[None,], dtype=input_spec_dtype, name="streamer"),
+                # 1
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
+                ]
+        
+    def _single_stage_predict(self, inputs):
+        inputs = [self.prompt.format(sentence=dic['text'], prompt=dic['prompt']) for dic in inputs]
+        print("prompt inputs:",inputs)
         # Get the config from the kwargs
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         batches = self._batchify(inputs, batch_size)
         examples = []
-        print("chat_tempalte",self._tokenizer.chat_template is None)
         for input_text in batches:
             if self._static_mode:
                 tokenized_output = self._tokenizer(
@@ -213,20 +263,16 @@ class QwenIETask(Task):
                     add_special_tokens = self._tokenizer.chat_template is None
                 )
             examples.append(tokenized_output)
+            
         outputs = {}
         outputs["text"] = inputs
         outputs["data_loader"] = examples
-        return outputs
-        
-    def _run_model(self, inputs):
-        """
-        Run the task model from the outputs of the `_tokenize` function.
-        """
+
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         results = []
         if self._static_mode:
             with static_mode_guard():
-                for batch in inputs["data_loader"]:
+                for batch in outputs["data_loader"]:
                     # print("input_ids:",batch["input_ids"])
                     batch["max_new_tokens"] = np.array(20)
                     batch["top_p"] = np.array(self._top_p)
@@ -235,45 +281,13 @@ class QwenIETask(Task):
                     position_ids = batch["position_ids"]
                     attention_mask = batch["attention_mask"]
                     for name in self.predictor.get_input_names():
-                        print(f"{name}:",batch[name])
+                        # print(f"{name}:",batch[name])
                         self.predictor.get_input_handle(name).copy_from_cpu(batch[name])
                     self.predictor.run()
-                    result = self.output_handle[0].copy_to_cpu().tolist() # logits = (batch,seq_len,vocab_size)
-                    # print(result)
+                    result = self.output_handle[0].copy_to_cpu().tolist() 
                     results.extend(result)
-                    # results.append(result[0][0])
-                    # while True:
-                    #     # softmax_result = self._softmax_np(result)
-                    #     # predicted_indices = np.argmax(softmax_result, axis=-1) # (batch,seq_len)
-                    #     # last_indices = predicted_indices[:,-1] # (batch,1)
-    
-                    #     eos_mask = (result == self._tokenizer.eos_token_id)
-                    #     if np.all(eos_mask):
-                    #         break
-                    #     # input_ids = np.concatenate([input_ids, last_indices[:, np.newaxis]], axis=-1)
-                    #     input_ids = np.concatenate([input_ids, result], axis=-1)
-                    #     self.input_handles[0].copy_from_cpu(input_ids)
-                    #     self.predictor.run()
-                    #     result = self.output_handle[0].copy_to_cpu()
-                    #     results.append(result[0][0])
-                        
-                    # 不使用generate的方法
-                    # while True:
-                    #     softmax_result = self._softmax_np(result)
-                    #     predicted_indices = np.argmax(softmax_result, axis=-1) # (batch,seq_len)
-                    #     last_indices = predicted_indices[:,-1] # (batch,1)
-    
-                    #     eos_mask = (last_indices == self._tokenizer.eos_token_id)
-                    #     if np.all(eos_mask):
-                    #         break
-                    #     input_ids = np.concatenate([input_ids, last_indices[:, np.newaxis]], axis=-1)
-                    #     self.input_handles[0].copy_from_cpu(input_ids)
-                    #     self.predictor.run()
-                    #     predicted_indices = self.output_handle[0].copy_to_cpu()
-                    # for i in range(batch_size):
-                    #     results.append(predicted_indices[i, origin_input_lens[i]-1:])
         else:
-            for batch_inputs in inputs["data_loader"]:
+            for batch_inputs in outputs["data_loader"]:
                 result = self._model.generate(
                     **batch_inputs,
                     decode_strategy=self._decode_strategy,
@@ -288,96 +302,166 @@ class QwenIETask(Task):
                     num_return_sequences=self._num_return_sequences,
                     use_cache=True,
                 )
-                result = result[0]
+                # result = result[0]
                 results.extend(result)
-
-        inputs["results"] = results
-        return inputs
-
-    def _softmax_np(self,x):
-        exp_x = np.exp(x - np.max(x, axis=-1, keepdims=True))
-        return exp_x / np.sum(exp_x, axis=-1, keepdims=True)
-    def _postprocess(self, inputs):
-        """
-        The model output is tag ids, this function will convert the model output to raw text.
-        """
-        preds = inputs["results"]
-        # print("preds:",preds)
-        result = []
-        for x in preds:
+        out_list = []
+        for x in results:
             if self._static_mode:
                 res = self._tokenizer.decode(x, skip_special_tokens=True)
                 res = res.strip("\n")
-                result.append(res)
             else:
                 res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
                 res = res.strip("\n")
-                result.append(res)
-        out_dict = {"result": result}
-        return out_dict
+            out_list.append([{"text": res}])
         
-    def _construct_input_spec(self):
+        print('out_List:',out_list)
+        return out_list
+
+    def _multi_stage_predict(self,data):
         """
-        Construct the input spec for the convert dygraph model to static model.
+        Traversal the schema tree and do multi-stage prediction.
+
+        Args:
+            data (list): a list of strings
+
+        Returns:
+            list: a list of predictions, where the list's length
+                equals to the length of `data`
         """
-        print(paddle.get_device())
-        if paddle.get_device().split(":", 1)[0] == "npu":
-            input_spec_dtype = "int32"
-        else:
-            input_spec_dtype = "int64"
-        self._input_spec = [
-                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),                
-                # False,
-                # paddle.static.InputSpec(shape=[None,], dtype=input_spec_dtype, name="streamer"),
-                # 1
-                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
-                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
-                # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "max_new_tokens"),
-                # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "top_p"),
-                # paddle.static.InputSpec(shape = [None],dtype = input_spec_dtype,name = "temperature"),
-                # max_length
-                # self._tgt_length,
-                # # min_length
-                # 0,
-                # # decode_strategy
-                # self._decode_strategy,
-                # # temperature
-                # self._temperature,
-                # # top_k
-                # self._top_k,
-                # # top_p
-                # self._top_p,
-                # # repetition_penalty
-                # 1,
-                # # num_beams
-                # 1,
-                # # num_beam_groups
-                # 1,
-                # # length_penalty
-                # 0.0,
-                # # early_stopping
-                # False,
-                # # bos_token_id
-                # self._tokenizer.bos_token_id,
-                # # eos_token_id
-                # self._tokenizer.eos_token_id,
-                # # pad_token_id
-                # self._tokenizer.pad_token_id,
-                # # decoder_start_token_id
-                # None,
-                # # forced_bos_token_id
-                # None,
-                # # forced_eos_token_id
-                # None,
-                # # no_repeat_ngram_size
-                # None,
-                # # num_return_sequences
-                # self._num_return_sequences,
-                # # diversity_rate
-                # 0.0,
-                # # use_cache
-                # True,
-                ]
+        results = [{} for _ in range(len(data))]
+        print(results)
+        # Input check to early return
+        if len(data) < 1 or self._schema_tree is None:
+            return results
+
+        # Copy to stay `self._schema_tree` unchanged
+        schema_list = self._schema_tree.children[:]
+        print("schema_list:",schema_list)
+        while len(schema_list) > 0:
+            node = schema_list.pop(0)
+            examples = []
+            input_map = {}
+            cnt = 0
+            idx = 0
+            if not node.prefix:
+                for one_data in data:
+                    examples.append(
+                        {
+                            "text": one_data,
+                            "prompt": dbc2sbc(node.name),
+                        }
+                    )
+                    input_map[cnt] = [idx]
+                    idx += 1
+                    cnt += 1
+            else:
+                for pre, one_data in zip(node.prefix, data):
+                    if len(pre) == 0:
+                        input_map[cnt] = []
+                    else:
+                        for p in pre:
+                            if self._is_en:
+                                if re.search(r"\[.*?\]$", node.name):
+                                    prompt_prefix = node.name[: node.name.find("[", 1)].strip()
+                                    cls_options = re.search(r"\[.*?\]$", node.name).group()
+                                    # Sentiment classification of xxx [positive, negative]
+                                    prompt = prompt_prefix + p + " " + cls_options
+                                else:
+                                    prompt = node.name + p
+                            else:
+                                prompt = p + node.name
+                            examples.append(
+                                {
+                                    "text": one_data,
+                                    "prompt": dbc2sbc(prompt),
+                                }
+                            )
+                        input_map[cnt] = [i + idx for i in range(len(pre))]
+                        idx += len(pre)
+                    cnt += 1
+            if len(examples) == 0:
+                result_list = []
+            else:
+                print("before single stage predict:",examples)
+                result_list = self._single_stage_predict(examples)
+                print('after single stage predict:',result_list)
+
+            if not node.parent_relations:
+                relations = [[] for i in range(len(data))]
+                for k, v in input_map.items():
+                    for idx in v:
+                        if len(result_list[idx]) == 0:
+                            continue
+                        if node.name not in results[k].keys():
+                            results[k][node.name] = result_list[idx]
+                        else:
+                            results[k][node.name].extend(result_list[idx])
+                    if node.name in results[k].keys():
+                        relations[k].extend(results[k][node.name])
+            else:
+                relations = node.parent_relations
+                for k, v in input_map.items():
+                    for i in range(len(v)):
+                        if len(result_list[v[i]]) == 0:
+                            continue
+                        if "relations" not in relations[k][i].keys():
+                            relations[k][i]["relations"] = {node.name: result_list[v[i]]}
+                        elif node.name not in relations[k][i]["relations"].keys():
+                            relations[k][i]["relations"][node.name] = result_list[v[i]]
+                        else:
+                            relations[k][i]["relations"][node.name].extend(result_list[v[i]])
+                new_relations = [[] for i in range(len(data))]
+                for i in range(len(relations)):
+                    for j in range(len(relations[i])):
+                        if "relations" in relations[i][j].keys() and node.name in relations[i][j]["relations"].keys():
+                            for k in range(len(relations[i][j]["relations"][node.name])):
+                                new_relations[i].append(relations[i][j]["relations"][node.name][k])
+                relations = new_relations
+
+            prefix = [[] for _ in range(len(data))]
+            for k, v in input_map.items():
+                for idx in v:
+                    for i in range(len(result_list[idx])):
+                        if self._is_en:
+                            prefix[k].append(" of " + result_list[idx][i]["text"])
+                        else:
+                            prefix[k].append(result_list[idx][i]["text"] + "的")
+
+            for child in node.children:
+                child.prefix = prefix
+                child.parent_relations = relations
+                schema_list.append(child)
+        return results
+        
+    def set_schema(self, schema):
+        if isinstance(schema, dict) or isinstance(schema, str):
+            schema = [schema]
+        self._schema_tree = self._build_tree(schema)
+
+    @classmethod
+    def _build_tree(cls, schema, name="root"):
+        """
+        Build the schema tree.
+        """
+        schema_tree = SchemaTree(name)
+        for s in schema:
+            if isinstance(s, str):
+                schema_tree.add_child(SchemaTree(s))
+            elif isinstance(s, dict):
+                for k, v in s.items():
+                    if isinstance(v, str):
+                        child = [v]
+                    elif isinstance(v, list):
+                        child = v
+                    else:
+                        raise TypeError(
+                            "Invalid schema, value for each key:value pairs should be list or string"
+                            "but {} received".format(type(v))
+                        )
+                    schema_tree.add_child(cls._build_tree(child, name=k))
+            else:
+                raise TypeError("Invalid schema, element should be string or dict, " "but {} received".format(type(s)))
+        return schema_tree
 
 class UIETask(Task):
     """
@@ -1381,14 +1465,17 @@ class UIETask(Task):
 
         # Copy to stay `self._schema_tree` unchanged
         schema_list = self._schema_tree.children[:]
+        print("schema_list:",schema_list)
         while len(schema_list) > 0:
             node = schema_list.pop(0)
             examples = []
             input_map = {}
             cnt = 0
             idx = 0
+            print(f"{node}.prefix:",node.prefix)
             if not node.prefix:
                 for one_data in data:
+                    print("111:1111111:",one_data)
                     examples.append(
                         {
                             "text": one_data["text"],
@@ -1416,6 +1503,7 @@ class UIETask(Task):
                                     prompt = node.name + p
                             else:
                                 prompt = p + node.name
+                            print("have prefix prompt:",prompt)
                             examples.append(
                                 {
                                     "text": one_data["text"],
@@ -1430,8 +1518,9 @@ class UIETask(Task):
             if len(examples) == 0:
                 result_list = []
             else:
+                print("enter single predict:",examples)
                 result_list = self._single_stage_predict(examples)
-
+            print("result_list:",result_list)
             if not node.parent_relations:
                 relations = [[] for i in range(len(data))]
                 for k, v in input_map.items():
@@ -1477,6 +1566,7 @@ class UIETask(Task):
                 child.prefix = prefix
                 child.parent_relations = relations
                 schema_list.append(child)
+        print("results:",results)
         results = self._add_bbox_info(results, data)
         return results
 
