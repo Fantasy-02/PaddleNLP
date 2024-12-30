@@ -54,7 +54,10 @@ class Task(metaclass=abc.ABCMeta):
         self._param_updated = False
 
         self._num_threads = self.kwargs["num_threads"] if "num_threads" in self.kwargs else math.ceil(cpu_count() / 2)
-        self._infer_precision = self.kwargs["precision"] if "precision" in self.kwargs else "fp32"
+        if self.task == "uie-llm-0.5b" or self.task == "uie-llm-1.5b":
+            self._infer_precision = self.kwargs["precision"] if "precision" in self.kwargs else "float16"
+        else:
+            self._infer_precision = self.kwargs["precision"] if "precision" in self.kwargs else "fp32"
         # Default to use Paddle Inference
         self._predictor_type = "paddle-inference"
         # The root directory for storing Taskflow related files, default to ~/.paddlenlp.
@@ -544,18 +547,11 @@ class Task(metaclass=abc.ABCMeta):
                 if not self.from_hf_hub
                 else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
             )
-            print("base_path:", _base_path)
             # if self._custom_model:
             self.inference_model_path = os.path.join(_base_path, "static", "model")
             if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
                 with dygraph_mode_guard():
-                    # print('self.model',self.model)
-                    print("#############################Begin testing###################################")
                     run_export(dtype = self._dtype,model_name_or_path = _base_path,output_path = os.path.join(_base_path, "static"))
-                    # 暂时删除
-                    # self._construct_model(self.model)
-                    # self._construct_input_spec()
-                    # self._convert_dygraph_to_static()
         self._static_json_file = self.inference_model_path + ".json"
         self._static_model_file = self.inference_model_path + ".pdmodel"
         self._static_params_file = self.inference_model_path + ".pdiparams"
@@ -584,9 +580,7 @@ class Task(metaclass=abc.ABCMeta):
             self._static_params_file = self._static_fp16_params_file
         if self._predictor_type == "paddle-inference":
             if use_pir_api():
-                print("use_pir_api")
                 self._config = paddle.inference.Config(self._static_json_file, self._static_params_file)
-                print("self._config:", dir(self._config))
             else:
                 self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
             self._prepare_static_mode()

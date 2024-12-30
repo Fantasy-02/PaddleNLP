@@ -1,4 +1,4 @@
-# 通用信息抽取 UIE(Universal Information Extraction)
+# 大模型信息抽取 LLM-IE(Large Language Model Information Extraction)
 
  **目录**
 
@@ -75,7 +75,7 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
                   schema= ['时间', '选手', '赛事名称'],
                   schema_lang="zh",
                   batch_size=1,
-                  model='qwen-0.5b'）
+                  model='uie-llm-0.5b'）
     pprint(ie("2月8日上午北京冬奥会自由式滑雪女子大跳台决赛中中国选手谷爱凌以188.25分获得金牌！")) # Better print results using pprint
     # 输出
     [{'时间': [{'text': '2月8日上午'}],
@@ -150,19 +150,11 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
 #### 3.4 模型选择
 
 - 多模型选择，满足精度、速度要求
-<!-- 
+
   | 模型 |  结构  | 语言 |
   | :---: | :--------: | :--------: |
-  | `uie-base` (默认)| 12-layers, 768-hidden, 12-heads | 中文 |
-  | `uie-base-en` | 12-layers, 768-hidden, 12-heads | 英文 |
-  | `uie-medical-base` | 12-layers, 768-hidden, 12-heads | 中文 |
-  | `uie-medium`| 6-layers, 768-hidden, 12-heads | 中文 |
-  | `uie-mini`| 6-layers, 384-hidden, 12-heads | 中文 |
-  | `uie-micro`| 4-layers, 384-hidden, 12-heads | 中文 |
-  | `uie-nano`| 4-layers, 312-hidden, 12-heads | 中文 |
-  | `uie-m-large`| 24-layers, 1024-hidden, 16-heads | 中、英文 |
-  | `uie-m-base`| 12-layers, 768-hidden, 12-heads | 中、英文 | -->
-
+  | `uie-llm-0.5b` (默认)| 24-layers, 896-hidden, 14-heads | 中、英文 |
+  | `uie-llm-1.5b` | 28-layers, 1536-hidden, 12-heads | 中、英文 |
 
 
 
@@ -172,20 +164,18 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
 >>> from paddlenlp import Taskflow
 
 >>> ie = Taskflow('information_extraction',
-                  schema="",
+                  schema = {'地震触发词': ['地震强度', '时间', '震中位置', '震源深度']},
                   schema_lang="zh",
                   batch_size=1,
-                  model='qwen-0.5b',
-                  position_prob=0.5,
-                  precision='fp16',
-                  use_fast=False)
+                  model='uie-llm-0.5b',
+                  precision='float16')
 ```
 
 * `schema`：定义任务抽取目标，可参考开箱即用中不同任务的调用示例进行配置。
-* `schema_lang`：设置 schema 的语言，默认为`zh`, 可选有`zh`和`en`。因为中英 schema 的构造有所不同，因此需要指定 schema 的语言。该参数只对`uie-m-base`和`uie-m-large`模型有效。
+* `schema_lang`：设置 schema 的语言，默认为`zh`, 可选有`zh`和`en`。因为中英 schema 的构造有所不同，因此需要指定 schema 的语言。
 * `batch_size`：批处理大小，请结合机器情况进行调整，默认为1。
-* `model`：选择任务使用的模型，默认为`qwen-0.5b`，可选有`qwen-0.5b`, `qwen-1.5b`。
-* `precision`：选择模型精度，默认为`fp32`，可选有`fp16`和`fp32`。`fp16`推理速度更快，支持 GPU 和 NPU 硬件环境。如果选择`fp16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
+* `model`：选择任务使用的模型，默认为`qwen-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`。
+* `precision`：选择模型精度，默认为`fp32`，可选有`float16`、`bfloat16`和`float32`和。如果选择`float16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。如果选择`bfloat16`，能有效加速处理大模型和批量数据，尤其与混合精度结合使用时性能表现更优。但需确保硬件和软件环境支持该精度。支持 `bfloat16`的硬件包括 NVIDIA A100 和 H100 GPU，同时需要确保使用 CUDA>=11.2、cuDNN>=8.1.1 等软件环境。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
 <a name="训练定制"></a>
 
 ## 4. 训练定制
@@ -269,7 +259,7 @@ python doccano.py \
 
 推荐使用 [大模型精调](../docs/finetune.md) 对模型进行微调。只需输入模型、数据集等就可以高效快速地进行微调和模型压缩等任务，可以一键启动多卡训练、混合精度训练、梯度累积、断点重启、日志显示等功能，并且针对训练过程的通用训练配置做了封装，比如：优化器、学习率调度等。
 
-使用下面的命令，使用 `qwen-0.5B` 作为预训练模型进行模型微调，将微调后的模型保存至`$finetuned_model`：
+使用下面的命令，使用 `Qwen2.5-0.5B` 作为预训练模型进行模型微调，将微调后的模型保存至`$finetuned_model`：
 
 如果在 GPU 环境中使用，可以指定 gpus 参数进行多卡训练：
 
@@ -284,7 +274,7 @@ sft_argument.json的参考配置如下：
 {
     "model_name_or_path": "Qwen/Qwen2.5-0.5B",
     "dataset_name_or_path": "./ie/data",
-    "output_dir": "./checkpoints/sft_ckpts",
+    "output_dir": "./checkpoints/ie_ckpts",
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 1,
     "per_device_eval_batch_size": 1,
@@ -297,7 +287,7 @@ sft_argument.json的参考配置如下：
     "save_strategy": "epoch",
     "src_length": 1024,
     "max_length": 2048,
-    "bf16": false,
+    "fp16": true,
     "fp16_opt_level": "O2",
     "do_train": true,
     "do_eval": true,
@@ -326,13 +316,14 @@ sft_argument.json的参考配置如下：
 ```shell
 # 返回到llm目录下
 python ./predict/predictor.py \
-    --model_name_or_path ./checkpoints/sft_ckpts \
+    --model_name_or_path ./checkpoints/ie_ckpts \
     --dtype float16 \
     --data_file ./ie/data/test.json \
     --output_file ./output/output.json \
     --src_length  512 \
     --max_length  20 \
-    --batch_size  4
+    --batch_size  4 \
+    --chat_template None
 
 ```
 
@@ -343,6 +334,21 @@ python ./predict/predictor.py \
 
 `paddlenlp.Taskflow`装载定制模型，通过`task_path`指定模型权重文件的路径，路径下需要包含训练好的模型权重文件
 
+```python
+>>> from pprint import pprint
+>>> from paddlenlp import Taskflow
+
+>>> schema = ['出发地', '目的地', '费用', '时间']
+# 设定抽取目标和定制化模型权重路径
+>>> my_ie = Taskflow("information_extraction", schema=schema, model='uie-llm-0.5b',precision = "float16", task_path='./checkpoints/sft_ckpts')
+>>> pprint(my_ie("城市内交通费7月5日金额114广州至佛山"))
+[{'出发地': [{'text': '广州'}],
+  '时间': [{'text': '7月5日'}],
+  '目的地': [{'text': '佛山'}],
+  '费用': [{'text': '114'}]}]
+```
+
+<a name="模型快速服务化部署"></a>
 
 
 <a name="模型快速服务化部署"></a>
@@ -377,5 +383,5 @@ python ./predict/predictor.py \
 
 #### 4.8 模型部署
 
-以下是 UIE Python 端的部署流程，包括环境准备、模型导出和使用示例。
+以下是 UIE-LLM Python 端的部署流程，包括环境准备、模型导出和使用示例。
 

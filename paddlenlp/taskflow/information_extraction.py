@@ -115,22 +115,7 @@ def get_dynamic_max_length(examples, default_max_length: int, dynamic_max_length
             break
     return max_length
 
-class QwenIETask(Task):
-    def __init__(self, task, model, schema, **kwargs):
-        super().__init__(task=task, model=model, **kwargs)
-        # Default to static mode
-        self._static_mode = True
-        self._dtype = kwargs.get("dtype", "float16")
-        self.kwargs["generation_task"] = task
-        self._tgt_length = kwargs.get("tgt_length", 2048)
-        # Token max length
-        self._max_seq_length = kwargs.get("max_seq_length", 2048)
-        self._top_k = kwargs.get("top_k", 1)
-        self._top_p = kwargs.get("top_p", 1.0)
-        self._temperature = kwargs.get("temperature", 1.0)
-        self._decode_strategy = kwargs.get("decode_strategy", "sampling")
-        self._num_return_sequences = kwargs.get("num_return_sequences", 1)
-        self.prompt = """你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
+LLM_IE_PROMPT = """你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
 **句子开始**
 {sentence}
 **句子结束**
@@ -139,6 +124,24 @@ class QwenIETask(Task):
 **问题结束**
 **回答开始**
 """
+
+class UIELLMTask(Task):
+    def __init__(self, task, model, schema, **kwargs):
+        super().__init__(task=task, model=model, **kwargs)
+        # Default to static mode
+        self._static_mode = False
+        self._dtype = kwargs.get("dtype", "float16")
+        self.kwargs["generation_task"] = task
+        self._tgt_length = kwargs.get("tgt_length", 20)
+        # Token max length
+        self._max_seq_length = kwargs.get("max_seq_length", 2048)
+        self._top_k = kwargs.get("top_k", 1)
+        self._top_p = kwargs.get("top_p", 1.0)
+        self._temperature = kwargs.get("temperature", 1.0)
+        self._decode_strategy = kwargs.get("decode_strategy", "sampling")
+        self._num_return_sequences = kwargs.get("num_return_sequences", 1)
+        self._prompt = LLM_IE_PROMPT
+        
         self._construct_tokenizer(model)
         self.set_schema(schema)
         if self._static_mode:
@@ -163,7 +166,7 @@ class QwenIETask(Task):
         Construct the inference model for the predictor.
         """
         model_instance = AutoModelForCausalLM.from_pretrained(
-            self._task_path,dtype = "float16"
+            self._task_path,dtype = self._infer_precision
         )
         self._model = model_instance
         self._model.eval()
@@ -194,7 +197,6 @@ class QwenIETask(Task):
            2) Generate the other model inputs from the raw text and token ids.
         """
         inputs = self._check_input_text(inputs)
-        print("checked_inputs:",inputs)
         return inputs
         
         
@@ -216,24 +218,18 @@ class QwenIETask(Task):
         """
         Construct the input spec for the convert dygraph model to static model.
         """
-        print(paddle.get_device())
         if paddle.get_device().split(":", 1)[0] == "npu":
             input_spec_dtype = "int32"
         else:
             input_spec_dtype = "int64"
         self._input_spec = [
                 paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),                
-                # False,
-                # paddle.static.InputSpec(shape=[None,], dtype=input_spec_dtype, name="streamer"),
-                # 1
                 paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
                 paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
                 ]
         
     def _single_stage_predict(self, inputs):
-        inputs = [self.prompt.format(sentence=dic['text'], prompt=dic['prompt']) for dic in inputs]
-        print("prompt inputs:",inputs)
-        # Get the config from the kwargs
+        inputs = [self._prompt.format(sentence=dic['text'], prompt=dic['prompt']) for dic in inputs]
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         batches = self._batchify(inputs, batch_size)
         examples = []
@@ -273,15 +269,13 @@ class QwenIETask(Task):
         if self._static_mode:
             with static_mode_guard():
                 for batch in outputs["data_loader"]:
-                    # print("input_ids:",batch["input_ids"])
-                    batch["max_new_tokens"] = np.array(20)
+                    batch["max_new_tokens"] = np.array(self._tgt_length)
                     batch["top_p"] = np.array(self._top_p)
                     batch["temperature"] = np.array(self._temperature)
                     input_ids = batch["input_ids"]
                     position_ids = batch["position_ids"]
                     attention_mask = batch["attention_mask"]
                     for name in self.predictor.get_input_names():
-                        # print(f"{name}:",batch[name])
                         self.predictor.get_input_handle(name).copy_from_cpu(batch[name])
                     self.predictor.run()
                     result = self.output_handle[0].copy_to_cpu().tolist() 
@@ -294,16 +288,14 @@ class QwenIETask(Task):
                     top_k=self._top_k,
                     top_p=self._top_p,
                     temperature=self._temperature,
-                    # max_length=self._tgt_length,
-                    max_length = 20,
+                    max_length=self._tgt_length,
                     bos_token_id=self._tokenizer.bos_token_id,
                     eos_token_id=self._tokenizer.eos_token_id,
                     pad_token_id=self._tokenizer.pad_token_id,
                     num_return_sequences=self._num_return_sequences,
                     use_cache=True,
                 )
-                # result = result[0]
-                results.extend(result)
+                results.extend(result[0])
         out_list = []
         for x in results:
             if self._static_mode:
@@ -314,7 +306,6 @@ class QwenIETask(Task):
                 res = res.strip("\n")
             out_list.append([{"text": res}])
         
-        print('out_List:',out_list)
         return out_list
 
     def _multi_stage_predict(self,data):
@@ -329,14 +320,12 @@ class QwenIETask(Task):
                 equals to the length of `data`
         """
         results = [{} for _ in range(len(data))]
-        print(results)
         # Input check to early return
         if len(data) < 1 or self._schema_tree is None:
             return results
 
         # Copy to stay `self._schema_tree` unchanged
         schema_list = self._schema_tree.children[:]
-        print("schema_list:",schema_list)
         while len(schema_list) > 0:
             node = schema_list.pop(0)
             examples = []
@@ -360,16 +349,7 @@ class QwenIETask(Task):
                         input_map[cnt] = []
                     else:
                         for p in pre:
-                            if self._is_en:
-                                if re.search(r"\[.*?\]$", node.name):
-                                    prompt_prefix = node.name[: node.name.find("[", 1)].strip()
-                                    cls_options = re.search(r"\[.*?\]$", node.name).group()
-                                    # Sentiment classification of xxx [positive, negative]
-                                    prompt = prompt_prefix + p + " " + cls_options
-                                else:
-                                    prompt = node.name + p
-                            else:
-                                prompt = p + node.name
+                            prompt = p + node.name
                             examples.append(
                                 {
                                     "text": one_data,
@@ -382,9 +362,7 @@ class QwenIETask(Task):
             if len(examples) == 0:
                 result_list = []
             else:
-                print("before single stage predict:",examples)
                 result_list = self._single_stage_predict(examples)
-                print('after single stage predict:',result_list)
 
             if not node.parent_relations:
                 relations = [[] for i in range(len(data))]
@@ -842,7 +820,6 @@ class UIETask(Task):
 
         # TODO: temporary solution to support HF Hub due to lack of AutoModel
         # change this logic to use AutoConfig when available
-        print('self.from_hf_hub:',self.from_hf_hub)
         if self.from_hf_hub:
             config_file_path = hf_hub_download(repo_id=self._task_path, filename=CONFIG_NAME)
             with open(config_file_path) as f:
@@ -859,7 +836,6 @@ class UIETask(Task):
                 self._check_task_files()
                 with open(os.path.join(self._task_path, CONFIG_NAME)) as f:
                     self._init_class = json.load(f)["architectures"].pop()
-        print('self._init_class:',self._init_class)
         self._is_en = True if model in ["uie-base-en"] or self._schema_lang == "en" else False
 
         if self._init_class in ["UIEX"]:
@@ -1007,8 +983,6 @@ class UIETask(Task):
     def _single_stage_predict(self, inputs):
         input_texts = [d["text"] for d in inputs]
         prompts = [d["prompt"] for d in inputs]
-        # print('input_texts:',input_texts)
-        # print('prompts:',prompts)
         # max predict length should exclude the length of prompt and summary tokens
         max_predict_len = self._max_seq_len - len(max(prompts)) - self._summary_token_num
 
@@ -1021,8 +995,7 @@ class UIETask(Task):
             short_input_texts, input_mapping = self._auto_splitter(
                 input_texts, max_predict_len, split_sentence=self._split_sentence
             )
-            # print('short_input_texts:', short_input_texts)
-            # print('input_mapping:',input_mapping)
+
 
 
         short_texts_prompts = []
@@ -1465,17 +1438,14 @@ class UIETask(Task):
 
         # Copy to stay `self._schema_tree` unchanged
         schema_list = self._schema_tree.children[:]
-        print("schema_list:",schema_list)
         while len(schema_list) > 0:
             node = schema_list.pop(0)
             examples = []
             input_map = {}
             cnt = 0
             idx = 0
-            print(f"{node}.prefix:",node.prefix)
             if not node.prefix:
                 for one_data in data:
-                    print("111:1111111:",one_data)
                     examples.append(
                         {
                             "text": one_data["text"],
@@ -1503,7 +1473,6 @@ class UIETask(Task):
                                     prompt = node.name + p
                             else:
                                 prompt = p + node.name
-                            print("have prefix prompt:",prompt)
                             examples.append(
                                 {
                                     "text": one_data["text"],
@@ -1518,9 +1487,7 @@ class UIETask(Task):
             if len(examples) == 0:
                 result_list = []
             else:
-                print("enter single predict:",examples)
                 result_list = self._single_stage_predict(examples)
-            print("result_list:",result_list)
             if not node.parent_relations:
                 relations = [[] for i in range(len(data))]
                 for k, v in input_map.items():
@@ -1566,7 +1533,6 @@ class UIETask(Task):
                 child.prefix = prefix
                 child.parent_relations = relations
                 schema_list.append(child)
-        print("results:",results)
         results = self._add_bbox_info(results, data)
         return results
 
