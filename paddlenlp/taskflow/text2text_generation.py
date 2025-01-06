@@ -57,10 +57,13 @@ class ChatGLMTask(Task):
         """
         self._input_spec = [
             paddle.static.InputSpec(shape=[None, None], dtype="int64"),  # input_ids
-            paddle.static.InputSpec(shape=[None, None, None, None], dtype="int64"),  # attention_mask
-            paddle.static.InputSpec(shape=[None, None, None], dtype="int64"),  # position_ids
+            paddle.static.InputSpec(
+                shape=[None, None, None, None], dtype="int64"
+            ),  # attention_mask
+            paddle.static.InputSpec(
+                shape=[None, None, None], dtype="int64"
+            ),  # position_ids
             # max_length
-            max_length
             self._tgt_length,
             # min_length
             0,
@@ -224,7 +227,9 @@ class ChatGLMTask(Task):
                 res = res.strip("\n")
                 result.append(res)
             else:
-                res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
+                res = self._tokenizer.decode(
+                    x.numpy().tolist(), skip_special_tokens=True
+                )
                 res = res.strip("\n")
                 result.append(res)
         out_dict = {"result": result}
@@ -248,6 +253,10 @@ class ChatGLMTask(Task):
         ), "The input spec must be created before converting the dygraph model to static model."
         logger.info("Converting to the inference model cost a little time.")
 
-        static_model = paddle.jit.to_static(self._model.generate, input_spec=self._input_spec)
+        static_model = paddle.jit.to_static(
+            self._model.generate, input_spec=self._input_spec
+        )
         paddle.jit.save(static_model, self.inference_model_path)
-        logger.info("The inference model save in the path:{}".format(self.inference_model_path))
+        logger.info(
+            "The inference model save in the path:{}".format(self.inference_model_path)
+        )

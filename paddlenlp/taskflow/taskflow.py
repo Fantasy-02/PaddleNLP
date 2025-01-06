@@ -67,7 +67,10 @@ TASKS = {
     },
     "dialogue": {
         "models": {
-            "plato-mini": {"task_class": DialogueTask, "task_flag": "dialogue-plato-mini"},
+            "plato-mini": {
+                "task_class": DialogueTask,
+                "task_flag": "dialogue-plato-mini",
+            },
             "__internal_testing__/tiny-random-plato": {
                 "task_class": DialogueTask,
                 "task_flag": "dialogue-tiny-random-plato",
@@ -79,7 +82,10 @@ TASKS = {
     },
     "fill_mask": {
         "models": {
-            "fill_mask": {"task_class": FillMaskTask, "task_flag": "fill_mask-fill_mask"},
+            "fill_mask": {
+                "task_class": FillMaskTask,
+                "task_flag": "fill_mask-fill_mask",
+            },
         },
         "default": {
             "model": "fill_mask",
@@ -206,7 +212,10 @@ TASKS = {
     },
     "text_correction": {
         "models": {
-            "ernie-csc": {"task_class": CSCTask, "task_flag": "text_correction-ernie-csc"},
+            "ernie-csc": {
+                "task_class": CSCTask,
+                "task_flag": "text_correction-ernie-csc",
+            },
         },
         "default": {"model": "ernie-csc"},
     },
@@ -324,16 +333,36 @@ TASKS = {
                 "hidden_size": 1536,
                 "task_flag": "information_extraction-uie-llm-1.5b",
             },
-            "uie-base": {"task_class": UIETask, "hidden_size": 768, "task_flag": "information_extraction-uie-base"},
+            "uie-base": {
+                "task_class": UIETask,
+                "hidden_size": 768,
+                "task_flag": "information_extraction-uie-base",
+            },
             "uie-medium": {
                 "task_class": UIETask,
                 "hidden_size": 768,
                 "task_flag": "information_extraction-uie-medium",
             },
-            "uie-mini": {"task_class": UIETask, "hidden_size": 384, "task_flag": "information_extraction-uie-mini"},
-            "uie-micro": {"task_class": UIETask, "hidden_size": 384, "task_flag": "information_extraction-uie-micro"},
-            "uie-nano": {"task_class": UIETask, "hidden_size": 312, "task_flag": "information_extraction-uie-nano"},
-            "uie-tiny": {"task_class": UIETask, "hidden_size": 768, "task_flag": "information_extraction-uie-tiny"},
+            "uie-mini": {
+                "task_class": UIETask,
+                "hidden_size": 384,
+                "task_flag": "information_extraction-uie-mini",
+            },
+            "uie-micro": {
+                "task_class": UIETask,
+                "hidden_size": 384,
+                "task_flag": "information_extraction-uie-micro",
+            },
+            "uie-nano": {
+                "task_class": UIETask,
+                "hidden_size": 312,
+                "task_flag": "information_extraction-uie-nano",
+            },
+            "uie-tiny": {
+                "task_class": UIETask,
+                "hidden_size": 768,
+                "task_flag": "information_extraction-uie-tiny",
+            },
             "uie-medical-base": {
                 "task_class": UIETask,
                 "hidden_size": 768,
@@ -359,7 +388,10 @@ TASKS = {
                 "hidden_size": 768,
                 "task_flag": "information_extraction-uie-x-base",
             },
-            "uie-data-distill-gp": {"task_class": GPTask, "task_flag": "information_extraction-uie-data-distill-gp"},
+            "uie-data-distill-gp": {
+                "task_class": GPTask,
+                "task_flag": "information_extraction-uie-data-distill-gp",
+            },
             "__internal_testing__/tiny-random-uie": {
                 "task_class": UIETask,
                 "hidden_size": 8,
@@ -785,8 +817,12 @@ class Taskflow(object):
 
     """
 
-    def __init__(self, task, model=None, mode=None, device_id=0, from_hf_hub=False, **kwargs):
-        assert task in TASKS, f"The task name:{task} is not in Taskflow list, please check your task name."
+    def __init__(
+        self, task, model=None, mode=None, device_id=0, from_hf_hub=False, **kwargs
+    ):
+        assert (
+            task in TASKS
+        ), f"The task name:{task} is not in Taskflow list, please check your task name."
         self.task = task
         # Set the device for the task
         device = get_env_device()
@@ -805,7 +841,9 @@ class Taskflow(object):
             self.model = model
 
         if self.model is not None:
-            assert self.model in set(TASKS[task][tag].keys()), f"The {tag} name: {model} is not in task:[{task}]"
+            assert self.model in set(
+                TASKS[task][tag].keys()
+            ), f"The {tag} name: {model} is not in task:[{task}]"
         else:
             self.model = TASKS[task]["default"][ind_tag]
 
@@ -821,7 +859,11 @@ class Taskflow(object):
         self.kwargs = kwargs
         task_class = TASKS[self.task][tag][self.model]["task_class"]
         self.task_instance = task_class(
-            model=self.model, task=self.task, priority_path=self.priority_path, from_hf_hub=from_hf_hub, **self.kwargs
+            model=self.model,
+            task=self.task,
+            priority_path=self.priority_path,
+            from_hf_hub=from_hf_hub,
+            **self.kwargs,
         )
         task_list = TASKS.keys()
         Taskflow.task_list = task_list
