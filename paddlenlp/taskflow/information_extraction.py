@@ -25,16 +25,15 @@ from huggingface_hub import hf_hub_download
 
 from ..datasets import load_dataset
 from ..layers import GlobalPointerForEntityExtraction, GPLinkerForRelationExtraction
-from ..transformers import UIE, UIEM, UIEX, AutoModel, AutoTokenizer
+from ..transformers import UIE, UIEM, UIEX, AutoModel, AutoTokenizer, AutoModelForCausalLM
 from ..utils.doc_parser import DocParser
 from ..utils.env import CONFIG_NAME, LEGACY_CONFIG_NAME
 from ..utils.ie_utils import map_offset, pad_image_data
 from ..utils.log import logger
 from ..utils.tools import get_bool_ids_greater_than, get_span
 from .task import Task
-from .utils import DataCollatorGP, SchemaTree, dbc2sbc, get_id_and_prob, gp_decode
-from paddlenlp.transformers import AutoTokenizer, AutoModelForCausalLM
-from .utils import download_file, static_mode_guard
+from .utils import DataCollatorGP, SchemaTree, dbc2sbc, get_id_and_prob, gp_decode, static_mode_guard
+
 usage = r"""
             from paddlenlp import Taskflow
 
@@ -129,7 +128,7 @@ class UIELLMTask(Task):
     def __init__(self, task, model, schema, **kwargs):
         super().__init__(task=task, model=model, **kwargs)
         # Default to static mode
-        self._static_mode = False
+        self._static_mode = True
         self._dtype = kwargs.get("dtype", "float16")
         self.kwargs["generation_task"] = task
         self._tgt_length = kwargs.get("tgt_length", 20)
@@ -272,9 +271,6 @@ class UIELLMTask(Task):
                     batch["max_new_tokens"] = np.array(self._tgt_length)
                     batch["top_p"] = np.array(self._top_p)
                     batch["temperature"] = np.array(self._temperature)
-                    input_ids = batch["input_ids"]
-                    position_ids = batch["position_ids"]
-                    attention_mask = batch["attention_mask"]
                     for name in self.predictor.get_input_names():
                         self.predictor.get_input_handle(name).copy_from_cpu(batch[name])
                     self.predictor.run()
