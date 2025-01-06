@@ -817,12 +817,8 @@ class Taskflow(object):
 
     """
 
-    def __init__(
-        self, task, model=None, mode=None, device_id=0, from_hf_hub=False, **kwargs
-    ):
-        assert (
-            task in TASKS
-        ), f"The task name:{task} is not in Taskflow list, please check your task name."
+    def __init__(self, task, model=None, mode=None, device_id=0, from_hf_hub=False, **kwargs):
+        assert task in TASKS, f"The task name:{task} is not in Taskflow list, please check your task name."
         self.task = task
         # Set the device for the task
         device = get_env_device()
@@ -841,9 +837,7 @@ class Taskflow(object):
             self.model = model
 
         if self.model is not None:
-            assert self.model in set(
-                TASKS[task][tag].keys()
-            ), f"The {tag} name: {model} is not in task:[{task}]"
+            assert self.model in set(TASKS[task][tag].keys()), f"The {tag} name: {model} is not in task:[{task}]"
         else:
             self.model = TASKS[task]["default"][ind_tag]
 

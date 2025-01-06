@@ -55,28 +55,16 @@ class Task(metaclass=abc.ABCMeta):
         self._custom_model = False
         self._param_updated = False
 
-        self._num_threads = (
-            self.kwargs["num_threads"]
-            if "num_threads" in self.kwargs
-            else math.ceil(cpu_count() / 2)
-        )
+        self._num_threads = self.kwargs["num_threads"] if "num_threads" in self.kwargs else math.ceil(cpu_count() / 2)
         if self.task == "uie-llm-0.5b" or self.task == "uie-llm-1.5b":
-            self._infer_precision = (
-                self.kwargs["precision"] if "precision" in self.kwargs else "float16"
-            )
+            self._infer_precision = self.kwargs["precision"] if "precision" in self.kwargs else "float16"
         else:
-            self._infer_precision = (
-                self.kwargs["precision"] if "precision" in self.kwargs else "fp32"
-            )
+            self._infer_precision = self.kwargs["precision"] if "precision" in self.kwargs else "fp32"
         # Default to use Paddle Inference
         self._predictor_type = "paddle-inference"
         # The root directory for storing Taskflow related files, default to ~/.paddlenlp.
-        self._home_path = (
-            self.kwargs["home_path"] if "home_path" in self.kwargs else PPNLP_HOME
-        )
-        self._task_flag = (
-            self.kwargs["task_flag"] if "task_flag" in self.kwargs else self.model
-        )
+        self._home_path = self.kwargs["home_path"] if "home_path" in self.kwargs else PPNLP_HOME
+        self._task_flag = self.kwargs["task_flag"] if "task_flag" in self.kwargs else self.model
         self.from_hf_hub = kwargs.pop("from_hf_hub", False)
         # Add mode flag for onnx output path redirection
         self.export_type = None
@@ -85,13 +73,9 @@ class Task(metaclass=abc.ABCMeta):
             self._task_path = self.kwargs["task_path"]
             self._custom_model = True
         elif self._priority_path:
-            self._task_path = os.path.join(
-                self._home_path, "taskflow", self._priority_path
-            )
+            self._task_path = os.path.join(self._home_path, "taskflow", self._priority_path)
         else:
-            self._task_path = os.path.join(
-                self._home_path, "taskflow", self.task, self.model
-            )
+            self._task_path = os.path.join(self._home_path, "taskflow", self.task, self.model)
         if self.is_static_model:
             self._static_model_name = self._get_static_model_name()
 
@@ -180,9 +164,7 @@ class Task(metaclass=abc.ABCMeta):
 
     def _check_predictor_type(self):
         if paddle.get_device() == "cpu" and self._infer_precision == "fp16":
-            logger.warning(
-                "The inference precision is change to 'fp32', 'fp16' inference only takes effect on gpu."
-            )
+            logger.warning("The inference precision is change to 'fp32', 'fp16' inference only takes effect on gpu.")
         elif paddle.get_device().split(":", 1)[0] == "npu":
             if self._infer_precision == "fp16":
                 logger.info("Inference on npu with fp16 precison")
@@ -197,13 +179,9 @@ class Task(metaclass=abc.ABCMeta):
         try:
             from paddleocr import PaddleOCR
         except ImportError:
-            raise ImportError(
-                "Please install the dependencies first, pip install paddleocr"
-            )
+            raise ImportError("Please install the dependencies first, pip install paddleocr")
         use_gpu = False if paddle.get_device() == "cpu" else True
-        self._ocr = PaddleOCR(
-            use_angle_cls=use_angle_cls, show_log=False, use_gpu=use_gpu, lang=lang
-        )
+        self._ocr = PaddleOCR(use_angle_cls=use_angle_cls, show_log=False, use_gpu=use_gpu, lang=lang)
 
     def _construce_layout_analysis_engine(self):
         """
@@ -212,12 +190,8 @@ class Task(metaclass=abc.ABCMeta):
         try:
             from paddleocr import PPStructure
         except ImportError:
-            raise ImportError(
-                "Please install the dependencies first, pip install paddleocr"
-            )
-        self._layout_analysis_engine = PPStructure(
-            table=False, ocr=True, show_log=False
-        )
+            raise ImportError("Please install the dependencies first, pip install paddleocr")
+        self._layout_analysis_engine = PPStructure(table=False, ocr=True, show_log=False)
 
     def _prepare_static_mode(self):
         """
@@ -265,14 +239,8 @@ class Task(metaclass=abc.ABCMeta):
 
         self.predictor = paddle.inference.create_predictor(self._config)
         self.input_names = [name for name in self.predictor.get_input_names()]
-        self.input_handles = [
-            self.predictor.get_input_handle(name)
-            for name in self.predictor.get_input_names()
-        ]
-        self.output_handle = [
-            self.predictor.get_output_handle(name)
-            for name in self.predictor.get_output_names()
-        ]
+        self.input_handles = [self.predictor.get_input_handle(name) for name in self.predictor.get_input_names()]
+        self.output_handle = [self.predictor.get_output_handle(name) for name in self.predictor.get_output_names()]
 
     def _prepare_onnx_mode(self):
         try:
@@ -305,17 +273,13 @@ class Task(metaclass=abc.ABCMeta):
         fp16_model_file = os.path.join(onnx_dir, "fp16_model.onnx")
         if not os.path.exists(fp16_model_file) or self._param_updated:
             onnx_model = onnx.load_model(float_onnx_file)
-            trans_model = float16.convert_float_to_float16(
-                onnx_model, keep_io_types=True
-            )
+            trans_model = float16.convert_float_to_float16(onnx_model, keep_io_types=True)
             onnx.save_model(trans_model, fp16_model_file)
         providers = [("CUDAExecutionProvider", {"device_id": self.kwargs["device_id"]})]
         sess_options = ort.SessionOptions()
         sess_options.intra_op_num_threads = self._num_threads
         sess_options.inter_op_num_threads = self._num_threads
-        self.predictor = ort.InferenceSession(
-            fp16_model_file, sess_options=sess_options, providers=providers
-        )
+        self.predictor = ort.InferenceSession(fp16_model_file, sess_options=sess_options, providers=providers)
         assert "CUDAExecutionProvider" in self.predictor.get_providers(), (
             "The environment for GPU inference is not set properly. "
             "A possible cause is that you had installed both onnxruntime and onnxruntime-gpu. "
@@ -334,15 +298,9 @@ class Task(metaclass=abc.ABCMeta):
                 cache_info_path = os.path.join(self._task_path, ".cache_info")
                 md5 = md5file(param_path)
                 self._param_updated = True
-                if (
-                    os.path.exists(cache_info_path)
-                    and open(cache_info_path).read()[:-8] == md5
-                ):
+                if os.path.exists(cache_info_path) and open(cache_info_path).read()[:-8] == md5:
                     self._param_updated = False
-                elif (
-                    self.task == "information_extraction"
-                    and self.model != "uie-data-distill-gp"
-                ):
+                elif self.task == "information_extraction" and self.model != "uie-data-distill-gp":
                     # UIE related models are moved to paddlenlp.transformers after v2.4.5
                     # So we convert the parameter key names for compatibility
                     # This check will be discard in future
@@ -366,9 +324,7 @@ class Task(metaclass=abc.ABCMeta):
                             )
                             new_state_dict[trans_name] = param
                         elif "encoder" in name:
-                            trans_name = name.replace(
-                                "encoder", prefix_map[self._init_class]
-                            )
+                            trans_name = name.replace("encoder", prefix_map[self._init_class])
                             new_state_dict[trans_name] = param
                         else:
                             new_state_dict[name] = param
@@ -380,12 +336,10 @@ class Task(metaclass=abc.ABCMeta):
 
         # When the user-provided model path is already a static model, skip to_static conversion
         if self.is_static_model:
-            self.inference_model_path = os.path.join(
-                self._task_path, self._static_model_name
-            )
-            if not os.path.exists(
-                self.inference_model_path + ".pdmodel"
-            ) or not os.path.exists(self.inference_model_path + ".pdiparams"):
+            self.inference_model_path = os.path.join(self._task_path, self._static_model_name)
+            if not os.path.exists(self.inference_model_path + ".pdmodel") or not os.path.exists(
+                self.inference_model_path + ".pdiparams"
+            ):
                 raise IOError(
                     f"{self._task_path} should include {self._static_model_name + '.pdmodel'} and {self._static_model_name + '.pdiparams'} while is_static_model is True"
                 )
@@ -398,15 +352,10 @@ class Task(metaclass=abc.ABCMeta):
             _base_path = (
                 self._task_path
                 if not self.from_hf_hub
-                else os.path.join(
-                    self._home_path, "taskflow", self.task, self._task_path
-                )
+                else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
             )
             self.inference_model_path = os.path.join(_base_path, "static", "model")
-            if (
-                not os.path.exists(self.inference_model_path + ".pdiparams")
-                or self._param_updated
-            ):
+            if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
                 with dygraph_mode_guard():
                     self._construct_model(self.model)
                     self._construct_input_spec()
@@ -415,18 +364,11 @@ class Task(metaclass=abc.ABCMeta):
         self._static_model_file = self.inference_model_path + ".pdmodel"
         self._static_params_file = self.inference_model_path + ".pdiparams"
 
-        if (
-            paddle.get_device().split(":", 1)[0] == "npu"
-            and self._infer_precision == "fp16"
-        ):
+        if paddle.get_device().split(":", 1)[0] == "npu" and self._infer_precision == "fp16":
             # transform fp32 model tp fp16 model
             self._static_fp16_model_file = self.inference_model_path + "-fp16.pdmodel"
-            self._static_fp16_params_file = (
-                self.inference_model_path + "-fp16.pdiparams"
-            )
-            if not os.path.exists(self._static_fp16_model_file) and not os.path.exists(
-                self._static_fp16_params_file
-            ):
+            self._static_fp16_params_file = self.inference_model_path + "-fp16.pdiparams"
+            if not os.path.exists(self._static_fp16_model_file) and not os.path.exists(self._static_fp16_params_file):
                 logger.info("Converting to the inference model from fp32 to fp16.")
                 paddle.inference.convert_to_mixed_precision(
                     os.path.join(self._static_model_file),
@@ -440,21 +382,15 @@ class Task(metaclass=abc.ABCMeta):
                     black_list={"sigmoid"},
                 )
                 logger.info(
-                    "The inference model in fp16 precison save in the path:{}".format(
-                        self._static_fp16_model_file
-                    )
+                    "The inference model in fp16 precison save in the path:{}".format(self._static_fp16_model_file)
                 )
             self._static_model_file = self._static_fp16_model_file
             self._static_params_file = self._static_fp16_params_file
         if self._predictor_type == "paddle-inference":
             if use_pir_api():
-                self._config = paddle.inference.Config(
-                    self._static_json_file, self._static_params_file
-                )
+                self._config = paddle.inference.Config(self._static_json_file, self._static_params_file)
             else:
-                self._config = paddle.inference.Config(
-                    self._static_model_file, self._static_params_file
-                )
+                self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
             self._prepare_static_mode()
         else:
             self._prepare_onnx_mode()
@@ -472,9 +408,7 @@ class Task(metaclass=abc.ABCMeta):
         logger.info("Converting to the inference model cost a little time.")
         static_model = paddle.jit.to_static(self._model, input_spec=self._input_spec)
         paddle.jit.save(static_model, self.inference_model_path)
-        logger.info(
-            "The inference model save in the path:{}".format(self.inference_model_path)
-        )
+        logger.info("The inference model save in the path:{}".format(self.inference_model_path))
 
     def _check_input_text(self, inputs):
         """
@@ -483,9 +417,7 @@ class Task(metaclass=abc.ABCMeta):
         inputs = inputs[0]
         if isinstance(inputs, str):
             if len(inputs) == 0:
-                raise ValueError(
-                    "Invalid inputs, input text should not be empty text, please check your input."
-                )
+                raise ValueError("Invalid inputs, input text should not be empty text, please check your input.")
             inputs = [inputs]
         elif isinstance(inputs, list):
             if not (isinstance(inputs[0], str) and len(inputs[0].strip()) > 0):
@@ -494,15 +426,11 @@ class Task(metaclass=abc.ABCMeta):
                 )
         else:
             raise TypeError(
-                "Invalid inputs, input text should be str or list of str, but type of {} found!".format(
-                    type(inputs)
-                )
+                "Invalid inputs, input text should be str or list of str, but type of {} found!".format(type(inputs))
             )
         return inputs
 
-    def _auto_splitter(
-        self, input_texts, max_text_len, bbox_list=None, split_sentence=False
-    ):
+    def _auto_splitter(self, input_texts, max_text_len, bbox_list=None, split_sentence=False):
         """
         Split the raw texts automatically for model inference.
         Args:
@@ -543,21 +471,16 @@ class Task(metaclass=abc.ABCMeta):
                     input_mapping.setdefault(cnt_org, []).append(cnt_short)
                     cnt_short += 1
                 else:
-                    temp_text_list = [
-                        sen[i : i + max_text_len] for i in range(0, lens, max_text_len)
-                    ]
+                    temp_text_list = [sen[i : i + max_text_len] for i in range(0, lens, max_text_len)]
                     short_input_texts.extend(temp_text_list)
                     if with_bbox:
                         if bbox_list[idx] is not None:
                             temp_bbox_list = [
-                                bbox_list[idx][i : i + max_text_len]
-                                for i in range(0, lens, max_text_len)
+                                bbox_list[idx][i : i + max_text_len] for i in range(0, lens, max_text_len)
                             ]
                             short_bbox_list.extend(temp_bbox_list)
                         else:
-                            short_bbox_list.extend(
-                                [None for _ in range(len(temp_text_list))]
-                            )
+                            short_bbox_list.extend([None for _ in range(len(temp_text_list))])
                     short_idx = cnt_short
                     cnt_short += math.ceil(lens / max_text_len)
                     temp_text_id = [short_idx + i for i in range(cnt_short - short_idx)]
@@ -620,12 +543,10 @@ class Task(metaclass=abc.ABCMeta):
         """
         # When the user-provided model path is already a static model, skip to_static conversion
         if self.is_static_model:
-            self.inference_model_path = os.path.join(
-                self._task_path, self._static_model_name
-            )
-            if not os.path.exists(
-                self.inference_model_path + ".pdmodel"
-            ) or not os.path.exists(self.inference_model_path + ".pdiparams"):
+            self.inference_model_path = os.path.join(self._task_path, self._static_model_name)
+            if not os.path.exists(self.inference_model_path + ".pdmodel") or not os.path.exists(
+                self.inference_model_path + ".pdiparams"
+            ):
                 raise IOError(
                     f"{self._task_path} should include {self._static_model_name + '.pdmodel'} and {self._static_model_name + '.pdiparams'} while is_static_model is True"
                 )
@@ -638,16 +559,11 @@ class Task(metaclass=abc.ABCMeta):
             _base_path = (
                 self._task_path
                 if not self.from_hf_hub
-                else os.path.join(
-                    self._home_path, "taskflow", self.task, self._task_path
-                )
+                else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
             )
             # if self._custom_model:
             self.inference_model_path = os.path.join(_base_path, "static", "model")
-            if (
-                not os.path.exists(self.inference_model_path + ".pdiparams")
-                or self._param_updated
-            ):
+            if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
                 with dygraph_mode_guard():
                     run_export(
                         dtype=self._dtype,
@@ -658,18 +574,11 @@ class Task(metaclass=abc.ABCMeta):
         self._static_model_file = self.inference_model_path + ".pdmodel"
         self._static_params_file = self.inference_model_path + ".pdiparams"
 
-        if (
-            paddle.get_device().split(":", 1)[0] == "npu"
-            and self._infer_precision == "fp16"
-        ):
+        if paddle.get_device().split(":", 1)[0] == "npu" and self._infer_precision == "fp16":
             # transform fp32 model tp fp16 model
             self._static_fp16_model_file = self.inference_model_path + "-fp16.pdmodel"
-            self._static_fp16_params_file = (
-                self.inference_model_path + "-fp16.pdiparams"
-            )
-            if not os.path.exists(self._static_fp16_model_file) and not os.path.exists(
-                self._static_fp16_params_file
-            ):
+            self._static_fp16_params_file = self.inference_model_path + "-fp16.pdiparams"
+            if not os.path.exists(self._static_fp16_model_file) and not os.path.exists(self._static_fp16_params_file):
                 logger.info("Converting to the inference model from fp32 to fp16.")
                 paddle.inference.convert_to_mixed_precision(
                     os.path.join(self._static_model_file),
@@ -683,21 +592,15 @@ class Task(metaclass=abc.ABCMeta):
                     black_list={"sigmoid"},
                 )
                 logger.info(
-                    "The inference model in fp16 precison save in the path:{}".format(
-                        self._static_fp16_model_file
-                    )
+                    "The inference model in fp16 precison save in the path:{}".format(self._static_fp16_model_file)
                 )
             self._static_model_file = self._static_fp16_model_file
             self._static_params_file = self._static_fp16_params_file
         if self._predictor_type == "paddle-inference":
             if use_pir_api():
-                self._config = paddle.inference.Config(
-                    self._static_json_file, self._static_params_file
-                )
+                self._config = paddle.inference.Config(self._static_json_file, self._static_params_file)
             else:
-                self._config = paddle.inference.Config(
-                    self._static_model_file, self._static_params_file
-                )
+                self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
             self._prepare_static_mode()
         else:
             self._prepare_onnx_mode()

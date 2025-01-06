@@ -117,9 +117,7 @@ usage = r"""
 MODEL_MAP = {"UIE": UIE, "UIEM": UIEM, "UIEX": UIEX}
 
 
-def get_dynamic_max_length(
-    examples, default_max_length: int, dynamic_max_length: List[int]
-) -> int:
+def get_dynamic_max_length(examples, default_max_length: int, dynamic_max_length: List[int]) -> int:
     """get max_length by examples which you can change it by examples in batch"""
     cur_length = len(examples[0]["input_ids"])
     max_length = default_max_length
@@ -181,9 +179,7 @@ class UIELLMTask(Task):
         """
         Construct the inference model for the predictor.
         """
-        model_instance = AutoModelForCausalLM.from_pretrained(
-            self._task_path, dtype=self._infer_precision
-        )
+        model_instance = AutoModelForCausalLM.from_pretrained(self._task_path, dtype=self._infer_precision)
         self._model = model_instance
         self._model.eval()
 
@@ -238,22 +234,13 @@ class UIELLMTask(Task):
         else:
             input_spec_dtype = "int64"
         self._input_spec = [
-            paddle.static.InputSpec(
-                shape=[None, None], dtype=input_spec_dtype, name="input_ids"
-            ),
-            paddle.static.InputSpec(
-                shape=[None, None], dtype=input_spec_dtype, name="position_ids"
-            ),
-            paddle.static.InputSpec(
-                shape=[None, None], dtype=input_spec_dtype, name="attention_mask"
-            ),
+            paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),
+            paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
+            paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
         ]
 
     def _single_stage_predict(self, inputs):
-        inputs = [
-            self._prompt.format(sentence=dic["text"], prompt=dic["prompt"])
-            for dic in inputs
-        ]
+        inputs = [self._prompt.format(sentence=dic["text"], prompt=dic["prompt"]) for dic in inputs]
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         batches = self._batchify(inputs, batch_size)
         examples = []
@@ -323,9 +310,7 @@ class UIELLMTask(Task):
                 res = self._tokenizer.decode(x, skip_special_tokens=True)
                 res = res.strip("\n")
             else:
-                res = self._tokenizer.decode(
-                    x.numpy().tolist(), skip_special_tokens=True
-                )
+                res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
                 res = res.strip("\n")
             out_list.append([{"text": res}])
 
@@ -406,28 +391,17 @@ class UIELLMTask(Task):
                         if len(result_list[v[i]]) == 0:
                             continue
                         if "relations" not in relations[k][i].keys():
-                            relations[k][i]["relations"] = {
-                                node.name: result_list[v[i]]
-                            }
+                            relations[k][i]["relations"] = {node.name: result_list[v[i]]}
                         elif node.name not in relations[k][i]["relations"].keys():
                             relations[k][i]["relations"][node.name] = result_list[v[i]]
                         else:
-                            relations[k][i]["relations"][node.name].extend(
-                                result_list[v[i]]
-                            )
+                            relations[k][i]["relations"][node.name].extend(result_list[v[i]])
                 new_relations = [[] for i in range(len(data))]
                 for i in range(len(relations)):
                     for j in range(len(relations[i])):
-                        if (
-                            "relations" in relations[i][j].keys()
-                            and node.name in relations[i][j]["relations"].keys()
-                        ):
-                            for k in range(
-                                len(relations[i][j]["relations"][node.name])
-                            ):
-                                new_relations[i].append(
-                                    relations[i][j]["relations"][node.name][k]
-                                )
+                        if "relations" in relations[i][j].keys() and node.name in relations[i][j]["relations"].keys():
+                            for k in range(len(relations[i][j]["relations"][node.name])):
+                                new_relations[i].append(relations[i][j]["relations"][node.name][k])
                 relations = new_relations
 
             prefix = [[] for _ in range(len(data))]
@@ -472,10 +446,7 @@ class UIELLMTask(Task):
                         )
                     schema_tree.add_child(cls._build_tree(child, name=k))
             else:
-                raise TypeError(
-                    "Invalid schema, element should be string or dict, "
-                    "but {} received".format(type(s))
-                )
+                raise TypeError("Invalid schema, element should be string or dict, " "but {} received".format(type(s)))
         return schema_tree
 
 
@@ -852,18 +823,14 @@ class UIETask(Task):
             "__internal_testing__/tiny-random-uie-m",
             "__internal_testing__/tiny-random-uie-x",
         ]:
-            self.resource_files_names["sentencepiece_model_file"] = (
-                "sentencepiece.bpe.model"
-            )
+            self.resource_files_names["sentencepiece_model_file"] = "sentencepiece.bpe.model"
         elif "sentencepiece_model_file" in self.resource_files_names.keys():
             del self.resource_files_names["sentencepiece_model_file"]
 
         # TODO: temporary solution to support HF Hub due to lack of AutoModel
         # change this logic to use AutoConfig when available
         if self.from_hf_hub:
-            config_file_path = hf_hub_download(
-                repo_id=self._task_path, filename=CONFIG_NAME
-            )
+            config_file_path = hf_hub_download(repo_id=self._task_path, filename=CONFIG_NAME)
             with open(config_file_path) as f:
                 self._init_class = json.load(f)["architectures"].pop()
         else:
@@ -878,9 +845,7 @@ class UIETask(Task):
                 self._check_task_files()
                 with open(os.path.join(self._task_path, CONFIG_NAME)) as f:
                     self._init_class = json.load(f)["architectures"].pop()
-        self._is_en = (
-            True if model in ["uie-base-en"] or self._schema_lang == "en" else False
-        )
+        self._is_en = True if model in ["uie-base-en"] or self._schema_lang == "en" else False
 
         if self._init_class in ["UIEX"]:
             self._summary_token_num = 4  # [CLS] prompt [SEP] [SEP] text [SEP] for UIE-X
@@ -927,48 +892,24 @@ class UIETask(Task):
             input_spec_dtype = "int64"
         if self._init_class in ["UIEX"]:
             self._input_spec = [
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="input_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="token_type_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="position_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="attention_mask"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None, 4], dtype="int64", name="bbox"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, 3, 224, 224], dtype="float32", name="image"
-                ),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="token_type_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="position_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="attention_mask"),
+                paddle.static.InputSpec(shape=[None, None, 4], dtype="int64", name="bbox"),
+                paddle.static.InputSpec(shape=[None, 3, 224, 224], dtype="float32", name="image"),
             ]
         elif self._init_class in ["UIEM"]:
             self._input_spec = [
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="input_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype="int64", name="position_ids"
-                ),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype="int64", name="position_ids"),
             ]
         else:
             self._input_spec = [
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype=input_spec_dtype, name="input_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype=input_spec_dtype, name="token_type_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype=input_spec_dtype, name="position_ids"
-                ),
-                paddle.static.InputSpec(
-                    shape=[None, None], dtype=input_spec_dtype, name="attention_mask"
-                ),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="input_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="token_type_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="position_ids"),
+                paddle.static.InputSpec(shape=[None, None], dtype=input_spec_dtype, name="attention_mask"),
             ]
 
     def _construct_model(self, model):
@@ -987,9 +928,7 @@ class UIETask(Task):
         """
         Construct the tokenizer for the predictor.
         """
-        self._tokenizer = AutoTokenizer.from_pretrained(
-            self._task_path, from_hf_hub=self.from_hf_hub
-        )
+        self._tokenizer = AutoTokenizer.from_pretrained(self._task_path, from_hf_hub=self.from_hf_hub)
 
     def _preprocess(self, inputs):
         """
@@ -1006,9 +945,7 @@ class UIETask(Task):
         """
         Check whether the input meet the requirement.
         """
-        self._ocr_lang_choice = (
-            (self._ocr_lang + "-layout") if self._layout_analysis else self._ocr_lang
-        )
+        self._ocr_lang_choice = (self._ocr_lang + "-layout") if self._layout_analysis else self._ocr_lang
         inputs = inputs[0]
         if isinstance(inputs, dict) or isinstance(inputs, str):
             inputs = [inputs]
@@ -1044,9 +981,7 @@ class UIETask(Task):
                             )
                         data["text"] = example["text"]
                     else:
-                        raise ValueError(
-                            "Invalid inputs, the input should contain a doc or a text."
-                        )
+                        raise ValueError("Invalid inputs, the input should contain a doc or a text.")
                     input_list.append(data)
                 elif isinstance(example, str):
                     input_list.append(example)
@@ -1064,9 +999,7 @@ class UIETask(Task):
         input_texts = [d["text"] for d in inputs]
         prompts = [d["prompt"] for d in inputs]
         # max predict length should exclude the length of prompt and summary tokens
-        max_predict_len = (
-            self._max_seq_len - len(max(prompts)) - self._summary_token_num
-        )
+        max_predict_len = self._max_seq_len - len(max(prompts)) - self._summary_token_num
 
         if self._init_class in ["UIEX"]:
             bbox_list = [d["bbox"] for d in inputs]
@@ -1099,8 +1032,7 @@ class UIETask(Task):
             ]
         else:
             short_inputs = [
-                {"text": short_input_texts[i], "prompt": short_texts_prompts[i]}
-                for i in range(len(short_input_texts))
+                {"text": short_input_texts[i], "prompt": short_texts_prompts[i]} for i in range(len(short_input_texts))
             ]
 
         def text_reader(inputs):
@@ -1131,9 +1063,7 @@ class UIETask(Task):
                         return_position_ids=True,
                         return_offsets_mapping=True,
                     )
-                    logger.info(
-                        "Inference with dynamic max length in {}".format(max_length)
-                    )
+                    logger.info("Inference with dynamic max length in {}".format(max_length))
                 else:
                     encoded_inputs = self._tokenizer(
                         text=[example["prompt"]],
@@ -1159,9 +1089,7 @@ class UIETask(Task):
                         encoded_inputs["attention_mask"][0],
                         encoded_inputs["offset_mapping"][0],
                     ]
-                tokenized_output = [
-                    np.array(x, dtype="int64") for x in tokenized_output
-                ]
+                tokenized_output = [np.array(x, dtype="int64") for x in tokenized_output]
                 yield tuple(tokenized_output)
 
         def doc_reader(inputs, pad_id=1, c_sep_id=2):
@@ -1195,9 +1123,7 @@ class UIETask(Task):
 
                     content_encoded_inputs = content_encoded_inputs[0]
                     inputs_ids = content_encoded_inputs["input_ids"][:-1]
-                    sub_offset_mapping = [
-                        list(x) for x in content_encoded_inputs["offset_mapping"]
-                    ]
+                    sub_offset_mapping = [list(x) for x in content_encoded_inputs["offset_mapping"]]
                     q_sep_index = content_encoded_inputs["input_ids"].index(2, 1)
 
                     bias = 0
@@ -1224,22 +1150,15 @@ class UIETask(Task):
                         return_offsets_mapping=True,
                     )
                     inputs_ids += content_encoded_inputs["input_ids"][1:-1]
-                    sub_offset_mapping = [
-                        list(x) for x in content_encoded_inputs["offset_mapping"]
-                    ]
+                    sub_offset_mapping = [list(x) for x in content_encoded_inputs["offset_mapping"]]
                     for i, sub_list in enumerate(sub_offset_mapping[1:-1]):
                         if i == 0:
                             org_offset = sub_list[1]
                         else:
-                            if (
-                                sub_list[0] != org_offset
-                                and sub_offset_mapping[1:-1][i - 1] != sub_list
-                            ):
+                            if sub_list[0] != org_offset and sub_offset_mapping[1:-1][i - 1] != sub_list:
                                 last_offset += 1
                             org_offset = sub_list[1]
-                        offset_mapping += [
-                            [last_offset, sub_list[1] - sub_list[0] + last_offset]
-                        ]
+                        offset_mapping += [[last_offset, sub_list[1] - sub_list[0] + last_offset]]
                         last_offset = offset_mapping[-1][-1]
                 return offset_mapping, last_offset, q_sep_index, inputs_ids
 
@@ -1275,11 +1194,7 @@ class UIETask(Task):
 
                     bbox_list = [[0, 0, 0, 0] for x in range(len(inputs_ids))]
                     token_type_ids = [
-                        (
-                            1
-                            if token_index <= q_sep_index or token_index > c_sep_index
-                            else 0
-                        )
+                        (1 if token_index <= q_sep_index or token_index > c_sep_index else 0)
                         for token_index in range(self._max_seq_len)
                     ]
                     padded_image = np.zeros([3, 224, 224])
@@ -1300,23 +1215,7 @@ class UIETask(Task):
                         if all([bbox[x] == prev_bbox[x] for x in range(4)]):
                             this_text_line += char
                         else:
-                            offset_mapping, last_offset, q_sep_index, inputs_ids = (
-                                _encode_doc(
-                                    self._tokenizer,
-                                    offset_mapping,
-                                    last_offset,
-                                    prompt,
-                                    this_text_line,
-                                    inputs_ids,
-                                    q_sep_index,
-                                    self._max_seq_len,
-                                )
-                            )
-                            this_text_line = char
-                        prev_bbox = bbox
-                    if len(this_text_line) > 0:
-                        offset_mapping, last_offset, q_sep_index, inputs_ids = (
-                            _encode_doc(
+                            offset_mapping, last_offset, q_sep_index, inputs_ids = _encode_doc(
                                 self._tokenizer,
                                 offset_mapping,
                                 last_offset,
@@ -1326,12 +1225,22 @@ class UIETask(Task):
                                 q_sep_index,
                                 self._max_seq_len,
                             )
+                            this_text_line = char
+                        prev_bbox = bbox
+                    if len(this_text_line) > 0:
+                        offset_mapping, last_offset, q_sep_index, inputs_ids = _encode_doc(
+                            self._tokenizer,
+                            offset_mapping,
+                            last_offset,
+                            prompt,
+                            this_text_line,
+                            inputs_ids,
+                            q_sep_index,
+                            self._max_seq_len,
                         )
                     if len(inputs_ids) > self._max_seq_len:
                         inputs_ids = inputs_ids[: (self._max_seq_len - 1)] + [c_sep_id]
-                        offset_mapping = offset_mapping[: (self._max_seq_len - 1)] + [
-                            [0, 0]
-                        ]
+                        offset_mapping = offset_mapping[: (self._max_seq_len - 1)] + [[0, 0]]
                     else:
                         inputs_ids += [c_sep_id]
                         offset_mapping += [[0, 0]]
@@ -1343,21 +1252,15 @@ class UIETask(Task):
 
                     seq_len = len(inputs_ids)
                     inputs_ids += [pad_id] * (self._max_seq_len - seq_len)
-                    token_type_ids = [1] * (q_sep_index + 1) + [0] * (
-                        seq_len - q_sep_index - 1
-                    )
+                    token_type_ids = [1] * (q_sep_index + 1) + [0] * (seq_len - q_sep_index - 1)
                     token_type_ids += [pad_id] * (self._max_seq_len - seq_len)
 
-                    bbox_list = _process_bbox(
-                        inputs_ids, bbox_lines, offset_mapping, offset_bias
-                    )
+                    bbox_list = _process_bbox(inputs_ids, bbox_lines, offset_mapping, offset_bias)
 
                     offset_mapping += [[0, 0]] * (self._max_seq_len - seq_len)
 
                     # Reindex the text
-                    text_start_idx = (
-                        offset_mapping[1:].index([0, 0]) + self._summary_token_num - 1
-                    )
+                    text_start_idx = offset_mapping[1:].index([0, 0]) + self._summary_token_num - 1
                     for idx in range(text_start_idx, self._max_seq_len):
                         offset_mapping[idx][0] -= offset_bias
                         offset_mapping[idx][1] -= offset_bias
@@ -1398,9 +1301,7 @@ class UIETask(Task):
 
         reader = doc_reader if self._init_class in ["UIEX"] else text_reader
         infer_ds = load_dataset(reader, inputs=short_inputs, lazy=self._lazy_load)
-        batch_sampler = paddle.io.BatchSampler(
-            dataset=infer_ds, batch_size=self._batch_size, shuffle=False
-        )
+        batch_sampler = paddle.io.BatchSampler(dataset=infer_ds, batch_size=self._batch_size, shuffle=False)
 
         infer_data_loader = paddle.io.DataLoader(
             dataset=infer_ds,
@@ -1471,15 +1372,9 @@ class UIETask(Task):
                 start_prob = start_prob.tolist()
                 end_prob = end_prob.tolist()
 
-            start_ids_list = get_bool_ids_greater_than(
-                start_prob, limit=self._position_prob, return_prob=True
-            )
-            end_ids_list = get_bool_ids_greater_than(
-                end_prob, limit=self._position_prob, return_prob=True
-            )
-            for start_ids, end_ids, offset_map in zip(
-                start_ids_list, end_ids_list, offset_maps.tolist()
-            ):
+            start_ids_list = get_bool_ids_greater_than(start_prob, limit=self._position_prob, return_prob=True)
+            end_ids_list = get_bool_ids_greater_than(end_prob, limit=self._position_prob, return_prob=True)
+            for start_ids, end_ids, offset_map in zip(start_ids_list, end_ids_list, offset_maps.tolist()):
                 span_set = get_span(start_ids, end_ids, with_prob=True)
                 sentence_id, prob = get_id_and_prob(span_set, offset_map)
                 sentence_ids.append(sentence_id)
@@ -1494,10 +1389,7 @@ class UIETask(Task):
         for short_result in short_results:
             if short_result == []:
                 continue
-            elif (
-                "start" not in short_result[0].keys()
-                and "end" not in short_result[0].keys()
-            ):
+            elif "start" not in short_result[0].keys() and "end" not in short_result[0].keys():
                 is_cls_task = True
                 break
             else:
@@ -1516,14 +1408,10 @@ class UIETask(Task):
                         ]
                     else:
                         cls_options[short_results[v][0]["text"]][0] += 1
-                        cls_options[short_results[v][0]["text"]][1] += short_results[v][
-                            0
-                        ]["probability"]
+                        cls_options[short_results[v][0]["text"]][1] += short_results[v][0]["probability"]
                 if len(cls_options) != 0:
                     cls_res, cls_info = max(cls_options.items(), key=lambda x: x[1])
-                    concat_results.append(
-                        [{"text": cls_res, "probability": cls_info[1] / cls_info[0]}]
-                    )
+                    concat_results.append([{"text": cls_res, "probability": cls_info[1] / cls_info[0]}])
                 else:
                     concat_results.append([])
             else:
@@ -1535,10 +1423,7 @@ class UIETask(Task):
                         offset += len(short_inputs[v])
                     else:
                         for i in range(len(short_results[v])):
-                            if (
-                                "start" not in short_results[v][i]
-                                or "end" not in short_results[v][i]
-                            ):
+                            if "start" not in short_results[v][i] or "end" not in short_results[v][i]:
                                 continue
                             short_results[v][i]["start"] += offset
                             short_results[v][i]["end"] += offset
@@ -1571,9 +1456,7 @@ class UIETask(Task):
                             org_box[2] + offset_x,
                             org_box[3] + offset_y,
                         ]
-                        box = self._parser_map[self._ocr_lang_choice]._normalize_box(
-                            box, [img_w, img_h], [1000, 1000]
-                        )
+                        box = self._parser_map[self._ocr_lang_choice]._normalize_box(box, [img_w, img_h], [1000, 1000])
                         text += segment[1]
                         bbox.extend([box] * len(segment[1]))
                     _inputs.append(
@@ -1635,12 +1518,8 @@ class UIETask(Task):
                         for p in pre:
                             if self._is_en:
                                 if re.search(r"\[.*?\]$", node.name):
-                                    prompt_prefix = node.name[
-                                        : node.name.find("[", 1)
-                                    ].strip()
-                                    cls_options = re.search(
-                                        r"\[.*?\]$", node.name
-                                    ).group()
+                                    prompt_prefix = node.name[: node.name.find("[", 1)].strip()
+                                    cls_options = re.search(r"\[.*?\]$", node.name).group()
                                     # Sentiment classification of xxx [positive, negative]
                                     prompt = prompt_prefix + p + " " + cls_options
                                 else:
@@ -1681,28 +1560,17 @@ class UIETask(Task):
                         if len(result_list[v[i]]) == 0:
                             continue
                         if "relations" not in relations[k][i].keys():
-                            relations[k][i]["relations"] = {
-                                node.name: result_list[v[i]]
-                            }
+                            relations[k][i]["relations"] = {node.name: result_list[v[i]]}
                         elif node.name not in relations[k][i]["relations"].keys():
                             relations[k][i]["relations"][node.name] = result_list[v[i]]
                         else:
-                            relations[k][i]["relations"][node.name].extend(
-                                result_list[v[i]]
-                            )
+                            relations[k][i]["relations"][node.name].extend(result_list[v[i]])
                 new_relations = [[] for i in range(len(data))]
                 for i in range(len(relations)):
                     for j in range(len(relations[i])):
-                        if (
-                            "relations" in relations[i][j].keys()
-                            and node.name in relations[i][j]["relations"].keys()
-                        ):
-                            for k in range(
-                                len(relations[i][j]["relations"][node.name])
-                            ):
-                                new_relations[i].append(
-                                    relations[i][j]["relations"][node.name][k]
-                                )
+                        if "relations" in relations[i][j].keys() and node.name in relations[i][j]["relations"].keys():
+                            for k in range(len(relations[i][j]["relations"][node.name])):
+                                new_relations[i].append(relations[i][j]["relations"][node.name][k])
                 relations = new_relations
 
             prefix = [[] for _ in range(len(data))]
@@ -1756,9 +1624,7 @@ class UIETask(Task):
                     text_len = len(segment[1])
                     if text_len == 0:
                         continue
-                    if len(segment) == 2 or (
-                        len(segment) == 3 and segment[2] != "table"
-                    ):
+                    if len(segment) == 2 or (len(segment) == 3 and segment[2] != "table"):
                         char_w = (sbox[2] - sbox[0]) * 1.0 / text_len
                         for i in range(text_len):
                             cbox = [
@@ -1830,10 +1696,7 @@ class UIETask(Task):
                         )
                     schema_tree.add_child(cls._build_tree(child, name=k))
             else:
-                raise TypeError(
-                    "Invalid schema, element should be string or dict, "
-                    "but {} received".format(type(s))
-                )
+                raise TypeError("Invalid schema, element should be string or dict, " "but {} received".format(type(s)))
         return schema_tree
 
     def _postprocess(self, inputs):
@@ -1873,9 +1736,7 @@ class GPTask(Task):
         self._num_workers = kwargs.get("num_workers", 0)
 
     def _load_config(self):
-        model_config_file = os.path.join(
-            self._task_path, self.resource_files_names["model_config"]
-        )
+        model_config_file = os.path.join(self._task_path, self.resource_files_names["model_config"])
         with open(model_config_file, encoding="utf-8") as f:
             model_config = json.load(f)
         self._label_maps = model_config["label_maps"]
@@ -1894,9 +1755,7 @@ class GPTask(Task):
         Construct the input spec for the convert dygraph model to static model.
         """
         self._input_spec = [
-            paddle.static.InputSpec(
-                shape=[None, None], dtype="int64", name="input_ids"
-            ),
+            paddle.static.InputSpec(shape=[None, None], dtype="int64", name="input_ids"),
             paddle.static.InputSpec(shape=[None, None], dtype="int64", name="att_mask"),
         ]
 
@@ -1946,13 +1805,9 @@ class GPTask(Task):
 
         infer_ds = load_dataset(read, inputs=inputs, lazy=self._lazy_load)
 
-        data_collator = DataCollatorGP(
-            self._tokenizer, label_maps=self._label_maps, task_type=self._task_type
-        )
+        data_collator = DataCollatorGP(self._tokenizer, label_maps=self._label_maps, task_type=self._task_type)
 
-        batch_sampler = paddle.io.BatchSampler(
-            dataset=infer_ds, batch_size=self._batch_size, shuffle=False
-        )
+        batch_sampler = paddle.io.BatchSampler(dataset=infer_ds, batch_size=self._batch_size, shuffle=False)
 
         infer_data_loader = paddle.io.DataLoader(
             dataset=infer_ds,
@@ -1967,23 +1822,14 @@ class GPTask(Task):
         return outputs
 
     def _run_model(self, inputs):
-        all_preds = (
-            ([], [])
-            if self._task_type in ["opinion_extraction", "relation_extraction"]
-            else []
-        )
+        all_preds = ([], []) if self._task_type in ["opinion_extraction", "relation_extraction"] else []
         for batch in inputs["data_loader"]:
             input_ids, attention_masks, offset_mappings, texts = batch
             self.input_handles[0].copy_from_cpu(input_ids.numpy().astype("int64"))
             self.input_handles[1].copy_from_cpu(attention_masks.numpy().astype("int64"))
             self.predictor.run()
-            logits = [
-                paddle.to_tensor(self.output_handle[i].copy_to_cpu())
-                for i in range(len(self.output_handle))
-            ]
-            batch_outputs = gp_decode(
-                logits, offset_mappings, texts, self._label_maps, self._task_type
-            )
+            logits = [paddle.to_tensor(self.output_handle[i].copy_to_cpu()) for i in range(len(self.output_handle))]
+            batch_outputs = gp_decode(logits, offset_mappings, texts, self._label_maps, self._task_type)
             if isinstance(batch_outputs, tuple):
                 all_preds[0].extend(batch_outputs[0])  # Entity output
                 all_preds[1].extend(batch_outputs[1])  # Relation output
@@ -2014,10 +1860,7 @@ class GPTask(Task):
                         )
                     schema_tree.add_child(cls._build_tree(child, name=k))
             else:
-                raise TypeError(
-                    "Invalid schema, element should be string or dict, "
-                    "but {} received".format(type(s))
-                )
+                raise TypeError("Invalid schema, element should be string or dict, " "but {} received".format(type(s)))
         return schema_tree
 
     def _postprocess(self, inputs):
@@ -2045,10 +1888,7 @@ class GPTask(Task):
                 result.setdefault(ent["type"], []).append(ent_res)
                 if ent["type"] == "评价维度":
                     for r in result["评价维度"]:
-                        if (
-                            ent["text"] == r["text"]
-                            and ent["start_index"] == r["start"]
-                        ):
+                        if ent["text"] == r["text"] and ent["start_index"] == r["start"]:
                             aspect_maps[(ent["text"], ent["start_index"])] = r
                             break
 
@@ -2108,15 +1948,10 @@ class GPTask(Task):
                                     rel_res = {
                                         "text": rel["object"],
                                         "start": rel["object_start_index"],
-                                        "end": rel["object_start_index"]
-                                        + len(rel["object"]),
-                                        "probability": rel["probability"].astype(
-                                            "float"
-                                        ),
+                                        "end": rel["object_start_index"] + len(rel["object"]),
+                                        "probability": rel["probability"].astype("float"),
                                     }
-                                    r["relations"].setdefault(node.name, []).append(
-                                        rel_res
-                                    )
+                                    r["relations"].setdefault(node.name, []).append(rel_res)
                                     cnt += 1
                                     r["relations"][node.name][cnt]["relations"] = {}
                                     relations[i].append(r["relations"][node.name][cnt])

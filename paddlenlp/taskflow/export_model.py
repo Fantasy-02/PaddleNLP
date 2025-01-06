@@ -22,9 +22,7 @@ from paddle.distributed import fleet
 
 @dataclass
 class ExportArgument:
-    output_path: str = field(
-        default=None, metadata={"help": "The output path of model."}
-    )
+    output_path: str = field(default=None, metadata={"help": "The output path of model."})
 
 
 def add_inference_args_to_config(model_config, args):
@@ -66,14 +64,10 @@ def run_export(dtype, model_name_or_path, output_path):
         tensor_parallel_rank = hcg.get_model_parallel_rank()
 
     # set predictor type
-    predictor = create_predictor(
-        predictor_args, model_args, tensor_parallel_degree, tensor_parallel_rank
-    )
+    predictor = create_predictor(predictor_args, model_args, tensor_parallel_degree, tensor_parallel_rank)
     predictor.model.eval()
     predictor.model.to_static(
-        llm_utils.get_infer_model_path(
-            export_args.output_path, predictor_args.model_prefix
-        ),
+        llm_utils.get_infer_model_path(export_args.output_path, predictor_args.model_prefix),
         {
             "dtype": predictor_args.dtype,
             "export_precache": predictor_args.export_precache,
@@ -88,18 +82,12 @@ def run_export(dtype, model_name_or_path, output_path):
         predictor.model.generation_config.save_pretrained(export_args.output_path)
 
     predictor.tokenizer.save_pretrained(export_args.output_path)
-    llm_utils.generate_rank_mapping(
-        os.path.join(export_args.output_path, "rank_mapping.csv")
-    )
+    llm_utils.generate_rank_mapping(os.path.join(export_args.output_path, "rank_mapping.csv"))
 
     if tensor_parallel_degree > 1:
-        export_args.output_path = os.path.join(
-            export_args.output_path, f"rank_{tensor_parallel_rank}"
-        )
+        export_args.output_path = os.path.join(export_args.output_path, f"rank_{tensor_parallel_rank}")
 
     if predictor_args.device == "npu":
         from npu.llama.export_utils import process_params
 
-        process_params(
-            os.path.join(export_args.output_path, predictor_args.model_prefix)
-        )
+        process_params(os.path.join(export_args.output_path, predictor_args.model_prefix))
