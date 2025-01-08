@@ -338,9 +338,9 @@ class QWenAttention(nn.Layer):
             # layer past[0] shape: bs * seq_len * head_num * dim
             kv_seq_len += layer_past[0].shape[1]
         if self.use_dynamic_ntk and kv_seq_len == hidden_states.shape[1] and not self.training:
-            context_value = math.log(kv_seq_len / self.seq_length, 2) + 1
-            ntk_alpha = 2 ** math.ceil(context_value) - 1
-            ntk_alpha = max(ntk_alpha, 1)
+            context_value = paddle.log(kv_seq_len / self.seq_length, 2) + 1
+            ntk_alpha = 2 ** paddle.ceil(context_value) - 1
+            ntk_alpha = paddle.maximum(ntk_alpha, paddle.full_like(ntk_alpha, 1))
             self._ntk_cached = ntk_alpha
         else:
             ntk_alpha = self._ntk_cached
@@ -1201,6 +1201,8 @@ class RotaryEmbedding(nn.Layer):
         self.inv_freq = 1.0 / (self.base ** (paddle.cast(paddle.arange(0, self.dim, 2), dtype="float32") / self.dim))
         self._seq_len_cached = 0
         self._ntk_alpha_cached = 1.0
+        self.cos_cached = None
+        self.sin_cached = None
 
     def update_cos_sin_cache(self, max_seq_len, offset=0, ntk_alpha=1.0):
         seqlen = max_seq_len + offset

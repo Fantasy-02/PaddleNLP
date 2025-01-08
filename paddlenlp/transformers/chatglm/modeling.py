@@ -830,7 +830,8 @@ class ChatGLMForCausalLM(ChatGLMPretrainedModel):
         use_gmasks = []
         mask_positions = []
         for seq in input_ids:
-            mask_token = gMASK if gMASK in seq else MASK
+            mask_token = gMASK if paddle.any(seq == gMASK) else MASK
+            # mask_token = gMASK if gMASK in seq else MASK
             use_gmask = mask_token == gMASK
             use_gmasks.append(use_gmask)
             mask_positions.append(paddle.where(seq == mask_token)[0][0])

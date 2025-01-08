@@ -327,18 +327,18 @@ class MistralAttention(nn.Layer):
 
         if not self.config.use_flash_attention:
             attn_weights = paddle.matmul(query_states, key_states.transpose([0, 1, 3, 2])) / math.sqrt(self.head_dim)
-
-            if attn_weights.shape != [bsz, self.num_heads, q_len, kv_seq_len]:
-                raise ValueError(
-                    f"Attention weights should be of size {[bsz, self.num_heads, q_len, kv_seq_len]}, but is"
-                    f" {attn_weights.shape}"
-                )
-
-            if attention_mask is not None:
-                if attention_mask.shape != [bsz, 1, q_len, kv_seq_len]:
+            if paddle.in_dynamic_mode():
+                if attn_weights.shape != [bsz, self.num_heads, q_len, kv_seq_len]:
                     raise ValueError(
-                        f"Attention mask should be of size {[bsz, 1, q_len, kv_seq_len]}, but is {attention_mask.shape}"
+                        f"Attention weights should be of size {[bsz, self.num_heads, q_len, kv_seq_len]}, but is"
+                        f" {attn_weights.shape}"
                     )
+
+                if attention_mask is not None:
+                    if attention_mask.shape != [bsz, 1, q_len, kv_seq_len]:
+                        raise ValueError(
+                            f"Attention mask should be of size {[bsz, 1, q_len, kv_seq_len]}, but is {attention_mask.shape}"
+                        )
 
                 attn_weights = attn_weights + attention_mask
 
@@ -359,12 +359,12 @@ class MistralAttention(nn.Layer):
                 is_causal=attention_mask is None,
             )
             attn_output = attn_output.transpose([0, 2, 1, 3])
-
-        if attn_output.shape != [bsz, self.num_heads, q_len, self.head_dim]:
-            raise ValueError(
-                f"`attn_output` should be of size {[bsz, self.num_heads, q_len, self.head_dim]}, but is"
-                f" {attn_output.shape}"
-            )
+        if paddle.in_dynamic_mode():
+            if attn_output.shape != [bsz, self.num_heads, q_len, self.head_dim]:
+                raise ValueError(
+                    f"`attn_output` should be of size {[bsz, self.num_heads, q_len, self.head_dim]}, but is"
+                    f" {attn_output.shape}"
+                )
 
         attn_output = attn_output.transpose([0, 2, 1, 3])
         attn_output = attn_output.reshape([bsz, q_len, self.num_heads * self.head_dim])

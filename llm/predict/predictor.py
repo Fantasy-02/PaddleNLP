@@ -348,7 +348,7 @@ class StaticGraphPredictor(BasePredictor):
             inference_config.enable_new_ir()
             if in_cinn_mode():
                 inference_config.enable_cinn()
-
+        inference_config.delete_pass("fused_rotary_position_embedding_pass")
         with static_mode_guard():
             self.predictor = paddle.inference.create_predictor(inference_config)
 

@@ -147,7 +147,8 @@ class LocalizedFiltering(paddle.nn.Layer):
             output2 = self.conv2(output1)
             output2 = paddle.transpose(output2[:, :, :seq_len, :], [2, 3, 0, 1])
             output2 = paddle.reshape(output2, [seq_len, bsz, embed_dim])
-            assert output2.shape == residual.shape
+            if paddle.in_dynamic_mode():
+                assert output2.shape == residual.shape
 
             lf_output = self.output_layernorm(output2 + residual)
             lf_output = paddle.transpose(lf_output, [1, 0, *range(2, len(lf_output.shape))])
@@ -171,7 +172,8 @@ class LocalizedFiltering(paddle.nn.Layer):
             output2 = self.conv2(output1[:, :, 1:-1, :])
             output2 = output2[:, :, 1:-1, :]
             output2 = paddle.reshape(output2, [1, bsz, embed_dim])
-            assert output2.shape == residual.shape
+            if paddle.in_dynamic_mode():
+                assert output2.shape == residual.shape
 
             lf_output = self.output_layernorm(output2 + residual)
             lf_output = paddle.transpose(lf_output, [1, 0, *range(2, len(lf_output.shape))])
@@ -635,9 +637,12 @@ class YuanAttention(nn.Layer):
                     inference_hidden_states_memory[:, -1:, :] = hidden_states[:, -1:, :]
             else:
                 hidden_states_tmp = before_hidden_states[:, -1:, :]
-                inference_hidden_states_memory = copy.deepcopy(
-                    paddle.concat((hidden_states_tmp, hidden_states), axis=1)
-                )
+                if paddle.in_dynamic_mode():
+                    inference_hidden_states_memory = copy.deepcopy(
+                        paddle.concat((hidden_states_tmp, hidden_states), axis=1)
+                    )
+                else:
+                    inference_hidden_states_memory = paddle.concat((hidden_states_tmp, hidden_states), axis=1).clone()
 
         value_states = (
             self.v_proj(hidden_states).reshape([bsz, q_len, self.num_heads, self.head_dim]).transpose([0, 2, 1, 3])
@@ -687,17 +692,18 @@ class YuanAttention(nn.Layer):
             attn_weights = paddle.matmul(
                 query_states, key_states.transpose([0, 1, 3, 2, *range(4, len(key_states.shape))])
             ) / math.sqrt(self.head_dim)
-
-            if attn_weights.shape != [bsz, self.num_heads, q_len, kv_seq_len]:
-                raise ValueError(
-                    f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
-                    f" {attn_weights.shape}"
-                )
-            if attention_mask is not None:
-                if attention_mask.shape != [bsz, 1, q_len, kv_seq_len]:
+            if paddle.in_dynamic_mode():
+                if attn_weights.shape != [bsz, self.num_heads, q_len, kv_seq_len]:
                     raise ValueError(
-                        f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.shape}"
+                        f"Attention weights should be of size {(bsz, self.num_heads, q_len, kv_seq_len)}, but is"
+                        f" {attn_weights.shape}"
                     )
+            if attention_mask is not None:
+                if paddle.in_dynamic_mode():
+                    if attention_mask.shape != [bsz, 1, q_len, kv_seq_len]:
+                        raise ValueError(
+                            f"Attention mask should be of size {(bsz, 1, q_len, kv_seq_len)}, but is {attention_mask.shape}"
+                        )
                 attn_weights = attn_weights + attention_mask
                 attn_weights = paddle.maximum(
                     attn_weights, paddle.to_tensor(paddle.finfo(attn_weights.dtype).min, attn_weights.dtype)
@@ -708,12 +714,12 @@ class YuanAttention(nn.Layer):
                 nn.functional.softmax(attn_weights, axis=-1, dtype=paddle.float32), query_states.dtype
             )
             attn_output = paddle.matmul(attn_weights, value_states)
-
-            if attn_output.shape != [bsz, self.num_heads, q_len, self.head_dim]:
-                raise ValueError(
-                    f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
-                    f" {attn_output.shape}"
-                )
+            if paddle.in_dynamic_mode():
+                if attn_output.shape != [bsz, self.num_heads, q_len, self.head_dim]:
+                    raise ValueError(
+                        f"`attn_output` should be of size {(bsz, self.num_heads, q_len, self.head_dim)}, but is"
+                        f" {attn_output.shape}"
+                    )
 
             attn_output = attn_output.transpose([0, 2, 1, *range(3, len(attn_output.shape))])
 
@@ -944,7 +950,10 @@ class YuanModel(YuanPretrainedModel):
         )
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
-        input_ids1 = copy.deepcopy(input_ids)
+        if paddle.in_dynamic_mode():
+            input_ids1 = copy.deepcopy(input_ids)
+        else:
+            input_ids1 = input_ids.clone()
         reset_mask_flag = False
         if past_key_values:
             input_ids = input_ids[:, -1:]

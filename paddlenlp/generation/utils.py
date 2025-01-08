@@ -1312,7 +1312,7 @@ class GenerationMixin(object):
 
         input_spec = [
             model_inputs_spec["input_ids"],  # input_ids
-            model_inputs_spec["attention_mask"],  # attention_mask
+            model_inputs_spec.get("attention_mask", None),  # attention_mask
             model_inputs_spec.get("position_ids", None),  # attention_mask
             logits_processors,
             paddle.static.InputSpec(shape=[1], dtype="int64"),  # max_length
