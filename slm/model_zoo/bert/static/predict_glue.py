@@ -19,6 +19,7 @@ from functools import partial
 import paddle
 from run_glue import METRIC_CLASSES, MODEL_CLASSES, convert_example
 
+from paddle.base.framework import use_pir_api
 from paddlenlp.data import Pad, Tuple
 from paddlenlp.datasets import load_dataset
 
@@ -79,7 +80,10 @@ class Predictor(object):
 
     @classmethod
     def create_predictor(cls, args):
-        config = paddle.inference.Config(args.model_path + ".pdmodel", args.model_path + ".pdiparams")
+        if use_pir_api():
+            config = paddle.inference.Config(args.model_path + ".json", args.model_path + ".pdiparams")
+        else:
+            config = paddle.inference.Config(args.model_path + ".pdmodel", args.model_path + ".pdiparams")
         if args.device == "gpu":
             # set GPU configs accordingly
             config.enable_use_gpu(100, 0)
