@@ -26,21 +26,7 @@
 
 Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该框架实现了实体抽取、关系抽取、事件抽取、情感分析等任务的统一建模，并使得不同任务间具备良好的迁移和泛化能力。然而，该模型在零样本场景下的表现仍存在不足。为此，PaddleNLP 借鉴 UIE 的方法，基于 Qwen2.5-0.5B 预训练模型，训练并开源了一款面向中文通用信息抽取的大模型。
 
-<!-- <div align="center">
-    <img src=https://user-images.githubusercontent.com/40840292/167236006-66ed845d-21b8-4647-908b-e1c6e7613eb1.png height=400 hspace='10'/>
-</div> -->
 
-
-
-<!-- #### UIE 的优势
-
-- **使用简单**：用户可以使用自然语言自定义抽取目标，无需训练即可统一抽取输入文本中的对应信息。**实现开箱即用，并满足各类信息抽取需求**。
-
-- **降本增效**：以往的信息抽取技术需要大量标注数据才能保证信息抽取的效果，为了提高开发过程中的开发效率，减少不必要的重复工作时间，开放域信息抽取可以实现零样本（zero-shot）或者少样本（few-shot）抽取，**大幅度降低标注数据依赖，在降低成本的同时，还提升了效果**。
-
-- **效果领先**：开放域信息抽取在多种场景，多种任务上，均有不俗的表现。
-
-<a name="应用示例"></a> -->
 
 ## 2. 应用示例
 
@@ -174,8 +160,8 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
 * `schema`：定义任务抽取目标，可参考开箱即用中不同任务的调用示例进行配置。
 * `schema_lang`：设置 schema 的语言，默认为`zh`, 可选有`zh`和`en`。因为中英 schema 的构造有所不同，因此需要指定 schema 的语言。
 * `batch_size`：批处理大小，请结合机器情况进行调整，默认为1。
-* `model`：选择任务使用的模型，默认为`qwen-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`。
-* `precision`：选择模型精度，默认为`fp32`，可选有`float16`、`bfloat16`和`float32`和。如果选择`float16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。如果选择`bfloat16`，能有效加速处理大模型和批量数据，尤其与混合精度结合使用时性能表现更优。但需确保硬件和软件环境支持该精度。支持 `bfloat16`的硬件包括 NVIDIA A100 和 H100 GPU，同时需要确保使用 CUDA>=11.2、cuDNN>=8.1.1 等软件环境。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
+* `model`：选择任务使用的模型，默认为`uie-llm-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`。
+* `precision`：选择模型精度，默认为`float16`，可选有`float16`、`bfloat16`和`float32`和。如果选择`float16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。如果选择`bfloat16`，能有效加速处理大模型和批量数据，尤其与混合精度结合使用时性能表现更优。但需确保硬件和软件环境支持该精度。支持 `bfloat16`的硬件包括 NVIDIA A100 和 H100 GPU，同时需要确保使用 CUDA>=11.2、cuDNN>=8.1.1 等软件环境。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
 <a name="训练定制"></a>
 
 ## 4. 训练定制
@@ -264,16 +250,14 @@ python doccano.py \
 如果在 GPU 环境中使用，可以指定 gpus 参数进行多卡训练：
 
 ```shell
-# 返回到llm目录下
-cd ..
-python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/qwen/sft_argument.json
+python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/sft_argument.json
 ```
 
 sft_argument.json的参考配置如下：
 ```shell
 {
     "model_name_or_path": "Qwen/Qwen2.5-0.5B",
-    "dataset_name_or_path": "./ie/data",
+    "dataset_name_or_path": "./data",
     "output_dir": "./checkpoints/ie_ckpts",
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 1,
@@ -314,12 +298,11 @@ sft_argument.json的参考配置如下：
 
 通过运行以下命令进行模型评估：
 ```shell
-# 返回到llm目录下
-python ./predict/predictor.py \
+python ./predictor.py \
     --model_name_or_path ./checkpoints/ie_ckpts \
     --dtype float16 \
-    --data_file ./ie/data/test.json \
-    --output_file ./output/output.json \
+    --data_file ./data/test.json \
+    --output_file ./output.json \
     --src_length  512 \
     --max_length  20 \
     --batch_size  4 \

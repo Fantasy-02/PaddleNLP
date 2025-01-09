@@ -15,8 +15,6 @@
 import json
 import math
 import random
-import re
-from typing import List, Optional
 
 import numpy as np
 import paddle
@@ -139,7 +137,7 @@ def add_full_negative_example(examples, texts, relation_prompts, predicate_set, 
                     else:
                         prompt = predicate + " of " + subject
                     if prompt not in relation_prompt:
-                        src = prompt_format.format_map({"sentence": texts[i], "prompt": redundants[idx]})
+                        src = prompt_format.format_map({"sentence": texts[i], "prompt": prompt})
                         negative_result = {"src": [src], "tgt": ["无相应实体"]}
                         negative_sample.append(negative_result)
             examples[i].extend(negative_sample)
@@ -173,7 +171,6 @@ def convert_llm_examples(
     with tqdm(total=len(raw_examples)) as pbar:
         for line in raw_examples:
             items = json.loads(line)
-            entity_id = 0
             # Export file in JSONL format which doccano >= 1.7.0
             # Export file in JSONL (relation) format
             # e.g. {"text": "", "relations": [ {"id": 0, "start_offset": 0, "end_offset": 6, "label": "ORG"}, ... ], "entities": [ {"id": 0, "from_id": 0, "to_id": 1, "type": "foundedAt"}, ... ]}

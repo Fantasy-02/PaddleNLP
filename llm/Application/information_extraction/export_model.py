@@ -19,6 +19,10 @@ from dataclasses import dataclass, field
 import paddle
 from paddle.distributed import fleet
 
+from llm.predict.predictor import ModelArgument, PredictorArgument, create_predictor
+from paddlenlp.trainer import PdArgumentParser
+from paddlenlp.trl import llm_utils
+
 
 @dataclass
 class ExportArgument:
@@ -34,19 +38,9 @@ def add_inference_args_to_config(model_config, args):
     model_config.infer_model_paddle_commit = paddle.version.commit
 
 
-def run_export(dtype, model_name_or_path, output_path):
-    from llm.predict.predictor import ModelArgument, PredictorArgument, create_predictor
-    from paddlenlp.trainer import PdArgumentParser
-    from paddlenlp.trl import llm_utils
-
+def main():
     parser = PdArgumentParser((PredictorArgument, ModelArgument, ExportArgument))
     predictor_args, model_args, export_args = parser.parse_args_into_dataclasses()
-
-    predictor_args.dtype = dtype
-    predictor_args.model_name_or_path = model_name_or_path
-    predictor_args.cachekv_int8_type = False
-
-    export_args.output_path = output_path
 
     paddle.set_default_dtype(predictor_args.dtype)
     tensor_parallel_degree = paddle.distributed.get_world_size()
@@ -66,12 +60,14 @@ def run_export(dtype, model_name_or_path, output_path):
     # set predictor type
     predictor = create_predictor(predictor_args, model_args)
     predictor.model.eval()
+
     predictor.model.to_static(
         llm_utils.get_infer_model_path(export_args.output_path, predictor_args.model_prefix),
         {
             "dtype": predictor_args.dtype,
             "export_precache": predictor_args.export_precache,
             "cachekv_int8_type": predictor_args.cachekv_int8_type,
+            "speculate_method": predictor_args.speculate_method,
         },
     )
     add_inference_args_to_config(predictor.model.config, predictor_args)
@@ -90,3 +86,7 @@ def run_export(dtype, model_name_or_path, output_path):
         from npu.llama.export_utils import process_params
 
         process_params(os.path.join(export_args.output_path, predictor_args.model_prefix))
+
+
+if __name__ == "__main__":
+    main()
