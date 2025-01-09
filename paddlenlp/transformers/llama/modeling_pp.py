@@ -22,11 +22,14 @@ from paddle.distributed.fleet.meta_parallel import (
     PipelineLayer,
     SharedLayerDesc,
 )
-from paddle.distributed.fleet.utils import recompute
+from paddle.distributed.fleet.recompute.recompute import recompute
 
 from paddlenlp.transformers.model_utils import PipelinePretrainedModel
+from paddlenlp.transformers.refined_recompute import get_skip_recompute_ops
+from paddlenlp.transformers.refined_recompute import recompute as rr_recompute
 from paddlenlp.utils.tools import get_env_device
 
+from ..dpo_criterion import DPOCriterion
 from .modeling import (
     LlamaConfig,
     LlamaDecoderLayer,
@@ -248,8 +251,9 @@ class LlamaDecoderLayerPipe(LlamaDecoderLayer):
             and self.config.recompute_granularity == "full"
             and has_gradient
         ):
+            recompute_fn = rr_recompute if any(self.skip_recompute_ops.values()) else recompute
             if attention_mask is not None or alibi is not None or attn_mask_startend_row_indices is not None:
-                hidden_states = recompute(
+                hidden_states = recompute_fn(
                     super().forward,
                     hidden_states,
                     position_ids=position_ids,
@@ -260,7 +264,7 @@ class LlamaDecoderLayerPipe(LlamaDecoderLayer):
                 )
             else:
                 # for pretrain
-                hidden_states = recompute(
+                hidden_states = recompute_fn(
                     super().forward,
                     hidden_states,
                     position_ids=position_ids,
@@ -311,6 +315,7 @@ class LlamaForCausalLMPipe(PipelinePretrainedModel, PipelineLayer):
     _get_fuse_or_split_param_mappings = LlamaPretrainedModel._get_fuse_or_split_param_mappings
     _init_weights = LlamaPretrainedModel._init_weights
     _keys_to_ignore_on_load_unexpected = LlamaPretrainedModel._keys_to_ignore_on_load_unexpected
+    _tied_weights_keys = ["lm_head.weight"]
 
     # DONOT Add base_model_prefix !!!!
 
@@ -371,7 +376,12 @@ class LlamaForCausalLMPipe(PipelinePretrainedModel, PipelineLayer):
 
         for i in range(config.num_hidden_layers):
             self.add_sequential_layer(
-                LayerDesc(LlamaDecoderLayerPipe, config=config, layerwise_recompute=i not in self.no_recompute_layers),
+                LayerDesc(
+                    LlamaDecoderLayerPipe,
+                    config=config,
+                    layerwise_recompute=i not in self.no_recompute_layers,
+                    skip_recompute_ops=get_skip_recompute_ops(config, i),
+                ),
                 f"llama.layers.{i}",
             )
         self.add_sequential_layer(LayerDesc(LlamaRMSNormPipe, config=config), "llama")
@@ -415,4 +425,7 @@ class LlamaForCausalLMPipe(PipelinePretrainedModel, PipelineLayer):
         # PipelinePretrainedModel.__init__(self.super(), config=config)
 
     def get_loss_fn(self, config):
-        return LlamaPretrainingCriterion(config)
+        if config.dpo_config is not None:
+            return DPOCriterion(config, use_infohub=True)
+        else:
+            return LlamaPretrainingCriterion(config)
