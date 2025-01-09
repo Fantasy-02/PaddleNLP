@@ -354,7 +354,7 @@ class Task(metaclass=abc.ABCMeta):
                 if not self.from_hf_hub
                 else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
             )
-            self.inference_model_path = os.path.join(_base_path, "static", "model")
+            self.inference_model_path = os.path.join(_base_path, "static", "inference")
             if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
                 with dygraph_mode_guard():
                     self._construct_model(self.model)
