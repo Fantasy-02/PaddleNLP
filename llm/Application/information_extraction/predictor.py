@@ -1418,21 +1418,21 @@ def predict():
                 print(output)
                 out = {"src": source, "tgt": target, "output": output}
                 f.write(json.dumps(out, ensure_ascii=False) + "\n")
-    
+
     acc, precision, recall, f1 = compute_metrics(model_args.output_file)
     logger.info("-----------------------------")
     logger.info("Evaluation Accuracy: %.5f | Precision: %.5f | Recall: %.5f | F1: %.5f" % (acc, precision, recall, f1))
 
+
 def compute_metrics(data_file):
-    
     def string_to_list(s):
         return [item.strip() for item in s.split(",")] if isinstance(s, str) else s
-        
+
     correct_count = 0
     total_count = 0
     TP, FN, FP = 0, 0, 0
 
-    with open(data_file, "r", encoding = "utf-8") as f:
+    with open(data_file, "r", encoding="utf-8") as f:
         for idx, line in enumerate(f, 1):
             data = json.loads(line.strip())
 
@@ -1453,16 +1453,16 @@ def compute_metrics(data_file):
             TP += len(label & pred)
             FN += len(label - pred)
             FP += len(pred - label)
-            
+
             total_count += 1
-        
+
     precision = TP / (TP + FP) if (TP + FP) > 0 else 0
     recall = TP / (TP + FN) if (TP + FN) > 0 else 0
     f1_score = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
     accuracy = correct_count / total_count if total_count > 0 else 0
 
     return accuracy, precision, recall, f1_score
-    
+
+
 if __name__ == "__main__":
     predict()
-    
