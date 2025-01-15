@@ -38,14 +38,7 @@ from ..utils.ie_utils import map_offset, pad_image_data
 from ..utils.log import logger
 from ..utils.tools import get_bool_ids_greater_than, get_span
 from .task import Task
-from .utils import (
-    DataCollatorGP,
-    SchemaTree,
-    dbc2sbc,
-    get_id_and_prob,
-    gp_decode,
-    static_mode_guard,
-)
+from .utils import DataCollatorGP, SchemaTree, dbc2sbc, get_id_and_prob, gp_decode
 
 usage = r"""
             from paddlenlp import Taskflow
@@ -142,7 +135,6 @@ LLM_IE_PROMPT = """你是一个阅读理解专家，请提取所给句子与问�
 class UIELLMTask(Task):
     def __init__(self, task, model, schema, **kwargs):
         super().__init__(task=task, model=model, **kwargs)
-        self._static_mode = False
         self._dtype = kwargs.get("dtype", "float16")
         self.kwargs["generation_task"] = task
         self._tgt_length = kwargs.get("tgt_length", 20)
@@ -241,30 +233,17 @@ class UIELLMTask(Task):
         batches = self._batchify(inputs, batch_size)
         examples = []
         for input_text in batches:
-            if self._static_mode:
-                tokenized_output = self._tokenizer(
-                    input_text,
-                    return_tensors="np",
-                    return_position_ids=True,
-                    padding=True,
-                    padding_side="left",
-                    max_length=self._max_seq_length,
-                    truncation=True,
-                    truncation_side="left",
-                    add_special_tokens=self._tokenizer.chat_template is None,
-                )
-            else:
-                tokenized_output = self._tokenizer(
-                    input_text,
-                    return_tensors="pd",
-                    return_position_ids=True,
-                    padding_side="left",
-                    padding=True,
-                    max_length=self._max_seq_length,
-                    truncation=True,
-                    truncation_side="left",
-                    add_special_tokens=self._tokenizer.chat_template is None,
-                )
+            tokenized_output = self._tokenizer(
+                input_text,
+                return_tensors="pd",
+                return_position_ids=True,
+                padding_side="left",
+                padding=True,
+                max_new_tokens=self._max_seq_length,
+                truncation=True,
+                truncation_side="left",
+                add_special_tokens=self._tokenizer.chat_template is None,
+            )
             examples.append(tokenized_output)
 
         outputs = {}
@@ -273,41 +252,25 @@ class UIELLMTask(Task):
 
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         results = []
-        if self._static_mode:
-            with static_mode_guard():
-                for batch in outputs["data_loader"]:
-                    batch["max_new_tokens"] = np.array(self._tgt_length)
-                    batch["top_p"] = np.array(self._top_p)
-                    batch["temperature"] = np.array(self._temperature)
-                    for name in self.predictor.get_input_names():
-                        self.predictor.get_input_handle(name).copy_from_cpu(batch[name])
-                    self.predictor.run()
-                    result = self.output_handle[0].copy_to_cpu().tolist()
-                    results.extend(result)
-        else:
-            for batch_inputs in outputs["data_loader"]:
-                result = self._model.generate(
-                    **batch_inputs,
-                    decode_strategy=self._decode_strategy,
-                    top_k=self._top_k,
-                    top_p=self._top_p,
-                    temperature=self._temperature,
-                    max_length=self._tgt_length,
-                    bos_token_id=self._tokenizer.bos_token_id,
-                    eos_token_id=self._tokenizer.eos_token_id,
-                    pad_token_id=self._tokenizer.pad_token_id,
-                    num_return_sequences=self._num_return_sequences,
-                    use_cache=True,
-                )
-                results.extend(result[0])
+        for batch_inputs in outputs["data_loader"]:
+            result = self._model.generate(
+                **batch_inputs,
+                decode_strategy=self._decode_strategy,
+                top_k=self._top_k,
+                top_p=self._top_p,
+                temperature=self._temperature,
+                max_new_tokens=self._tgt_length,
+                bos_token_id=self._tokenizer.bos_token_id,
+                eos_token_id=self._tokenizer.eos_token_id,
+                pad_token_id=self._tokenizer.pad_token_id,
+                num_return_sequences=self._num_return_sequences,
+                use_cache=True,
+            )
+            results.extend(result[0])
         out_list = []
         for x in results:
-            if self._static_mode:
-                res = self._tokenizer.decode(x, skip_special_tokens=True)
-                res = res.strip("\n")
-            else:
-                res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
-                res = res.strip("\n")
+            res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
+            res = res.strip("\n")
             end_idx = res.find("\n**回答结束**\n\n")
             if end_idx != -1:
                 res = res[:end_idx]
