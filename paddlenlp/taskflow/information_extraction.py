@@ -142,8 +142,6 @@ LLM_IE_PROMPT = """你是一个阅读理解专家，请提取所给句子与问�
 class UIELLMTask(Task):
     def __init__(self, task, model, schema, **kwargs):
         super().__init__(task=task, model=model, **kwargs)
-        # Default to static mode
-        self._static_mode = True
         self._dtype = kwargs.get("dtype", "float16")
         self.kwargs["generation_task"] = task
         self._tgt_length = kwargs.get("tgt_length", 20)
@@ -158,10 +156,7 @@ class UIELLMTask(Task):
 
         self._construct_tokenizer(model)
         self.set_schema(schema)
-        if self._static_mode:
-            self._get_llm_static_model()
-        else:
-            self._construct_model(model)
+        self._construct_model(model)
         self._construct_input_spec()
 
         if not schema:

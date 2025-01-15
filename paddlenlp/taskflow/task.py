@@ -25,7 +25,6 @@ from paddle.dataset.common import md5file
 
 from ..utils.env import PPNLP_HOME
 from ..utils.log import logger
-from .export_model import run_export
 from .utils import cut_chinese_sent, download_check, download_file, dygraph_mode_guard
 
 
@@ -536,74 +535,6 @@ class Task(metaclass=abc.ABCMeta):
                 if op.type.count("quantize"):
                     return True
         return False
-
-    def _get_llm_static_model(self):
-        """
-        Return the inference program, inputs and outputs in static mode.
-        """
-        # When the user-provided model path is already a static model, skip to_static conversion
-        if self.is_static_model:
-            self.inference_model_path = os.path.join(self._task_path, self._static_model_name)
-            if not os.path.exists(self.inference_model_path + ".pdmodel") or not os.path.exists(
-                self.inference_model_path + ".pdiparams"
-            ):
-                raise IOError(
-                    f"{self._task_path} should include {self._static_model_name + '.pdmodel'} and {self._static_model_name + '.pdiparams'} while is_static_model is True"
-                )
-            if self.paddle_quantize_model(self.inference_model_path):
-                self._infer_precision = "int8"
-                self._predictor_type = "paddle-inference"
-
-        else:
-            # Since 'self._task_path' is used to load the HF Hub path when 'from_hf_hub=True', we construct the static model path in a different way
-            _base_path = (
-                self._task_path
-                if not self.from_hf_hub
-                else os.path.join(self._home_path, "taskflow", self.task, self._task_path)
-            )
-            # if self._custom_model:
-            self.inference_model_path = os.path.join(_base_path, "static", "model")
-            if not os.path.exists(self.inference_model_path + ".pdiparams") or self._param_updated:
-                with dygraph_mode_guard():
-                    run_export(
-                        dtype=self._dtype,
-                        model_name_or_path=_base_path,
-                        output_path=os.path.join(_base_path, "static"),
-                    )
-        self._static_json_file = self.inference_model_path + ".json"
-        self._static_model_file = self.inference_model_path + ".pdmodel"
-        self._static_params_file = self.inference_model_path + ".pdiparams"
-
-        if paddle.get_device().split(":", 1)[0] == "npu" and self._infer_precision == "fp16":
-            # transform fp32 model tp fp16 model
-            self._static_fp16_model_file = self.inference_model_path + "-fp16.pdmodel"
-            self._static_fp16_params_file = self.inference_model_path + "-fp16.pdiparams"
-            if not os.path.exists(self._static_fp16_model_file) and not os.path.exists(self._static_fp16_params_file):
-                logger.info("Converting to the inference model from fp32 to fp16.")
-                paddle.inference.convert_to_mixed_precision(
-                    os.path.join(self._static_model_file),
-                    os.path.join(self._static_params_file),
-                    os.path.join(self._static_fp16_model_file),
-                    os.path.join(self._static_fp16_params_file),
-                    backend=paddle.inference.PlaceType.CUSTOM,
-                    mixed_precision=paddle.inference.PrecisionType.Half,
-                    # Here, npu sigmoid will lead to OOM and cpu sigmoid don't support fp16.
-                    # So, we add sigmoid to black list temporarily.
-                    black_list={"sigmoid"},
-                )
-                logger.info(
-                    "The inference model in fp16 precison save in the path:{}".format(self._static_fp16_model_file)
-                )
-            self._static_model_file = self._static_fp16_model_file
-            self._static_params_file = self._static_fp16_params_file
-        if self._predictor_type == "paddle-inference":
-            if use_pir_api():
-                self._config = paddle.inference.Config(self._static_json_file, self._static_params_file)
-            else:
-                self._config = paddle.inference.Config(self._static_model_file, self._static_params_file)
-            self._prepare_static_mode()
-        else:
-            self._prepare_onnx_mode()
 
     def help(self):
         """
