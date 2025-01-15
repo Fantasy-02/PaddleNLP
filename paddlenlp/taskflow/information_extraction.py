@@ -307,6 +307,9 @@ class UIELLMTask(Task):
             else:
                 res = self._tokenizer.decode(x.numpy().tolist(), skip_special_tokens=True)
                 res = res.strip("\n")
+            end_idx = res.find("\n**回答结束**\n\n")
+            if end_idx != -1:
+                res = res[:end_idx]
             out_list.append([{"text": res}])
 
         return out_list
