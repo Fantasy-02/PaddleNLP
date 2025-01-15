@@ -142,6 +142,7 @@ LLM_IE_PROMPT = """你是一个阅读理解专家，请提取所给句子与问�
 class UIELLMTask(Task):
     def __init__(self, task, model, schema, **kwargs):
         super().__init__(task=task, model=model, **kwargs)
+        self._static_mode = False
         self._dtype = kwargs.get("dtype", "float16")
         self.kwargs["generation_task"] = task
         self._tgt_length = kwargs.get("tgt_length", 20)
