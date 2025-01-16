@@ -21,7 +21,7 @@
 
 ## 1. 模型简介
 
-信息抽取大模型（LLM-UIE）是 PaddleNLP 团队基于开源模型和高质量数据集构建的信息抽取大模型， 支持统一训练信息抽取任务包括命名实体识别（NER），关系抽取（RE）和事件抽取（EE）。模型共包含0.5B、1.5B、7B 和14B 共4个版本，以适配不同场景下信息抽取任务使用。在多个数据集（包含 Boson、CLUENER、CCIR2021等常见数据）相比 UIE 模型在 ACC 和F1指标上有大幅度提升。
+信息抽取大模型（LLM-UIE）是 PaddleNLP 团队基于开源模型和高质量数据集构建的信息抽取大模型， 支持统一训练信息抽取任务包括命名实体识别（NER），关系抽取（RE）和事件抽取（EE）。模型共包含0.5B、1.5B、7B 和14B 共4个版本，以适配不同场景下信息抽取任务使用。在多个数据集（包含 Boson、CLUENER、CCIR2021等常见数据）相比 UIE 模型在 ACC 和 F1指标上有大幅度提升。
 
 
 <a name="快速开始"></a>
@@ -196,6 +196,7 @@ for sentence, prompt, result in zip(sentences, prompts, results):
             'text': '2022语言与智能技术竞赛'}]}]
     ```
 
+<a name="模型选择"></a>
 
 #### 3.3 模型选择
 
@@ -207,6 +208,8 @@ for sentence, prompt, result in zip(sentences, prompts, results):
   | `uie-llm-1.5b` | 28-layers, 1536-hidden, 12-heads | 中、英文 |
   | `uie-llm-7b` | 28-layers, 3584-hidden, 28-heads | 中、英文 |
   | `uie-llm-14b` | 48-layers, 5120-hidden, 40-heads | 中、英文 |
+
+<a name="更多配置"></a>
 
 #### 3.4 更多配置
 
@@ -308,7 +311,7 @@ python doccano.py \
 
 #### 4.3 模型微调
 
-推荐使用 [大模型精调](../docs/finetune.md) 对模型进行微调。只需输入模型、数据集等就可以高效快速地进行微调和模型压缩等任务，可以一键启动多卡训练、混合精度训练、梯度累积、断点重启、日志显示等功能，并且针对训练过程的通用训练配置做了封装，比如：优化器、学习率调度等。
+推荐使用 [大模型精调](../../docs/finetune.md) 对模型进行微调。只需输入模型、数据集等就可以高效快速地进行微调和模型压缩等任务，可以一键启动多卡训练、混合精度训练、梯度累积、断点重启、日志显示等功能，并且针对训练过程的通用训练配置做了封装，比如：优化器、学习率调度等。
 
 使用下面的命令，使用 `Qwen2.5-0.5B-Instruct` 作为预训练模型进行模型微调，将微调后的模型保存至`$finetuned_model`：
 
@@ -356,7 +359,7 @@ sft_argument.json 的参考配置如下：
     "use_flash_attention": false
   }
 ```
-更多 sft_argument.json 配置文件说明，请参考[大模型精调](../docs/finetune.md)
+更多 sft_argument.json 配置文件说明，请参考[大模型精调](../../docs/finetune.md)
 
 
 <a name="模型推理"></a>
