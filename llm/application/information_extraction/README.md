@@ -3,138 +3,35 @@
  **目录**
 
 - [1. 模型简介](#模型简介)
-- [2. 快速开始](#快速开始)
-- [3. 开箱即用](#开箱即用)
-  - [3.1 实体抽取](#实体抽取)
-  - [3.2 关系抽取](#关系抽取)
-  - [3.3 模型选择](#模型选择)
-  - [3.4 更多配置](#更多配置)
-- [4. 训练定制](#训练定制)
-  - [4.1 代码结构](#代码结构)
-  - [4.2 数据标注](#数据标注)
-  - [4.3 模型微调](#模型微调)
-  - [4.4 定制模型一键预测](#定制模型一键预测)
-  - [4.5 实验指标](#实验指标)
+- [2. 开箱即用](#开箱即用)
+  - [2.1 实体抽取](#实体抽取)
+  - [2.2 关系抽取](#关系抽取)
+  - [2.3 模型选择](#模型选择)
+  - [2.4 更多配置](#更多配置)
+- [3. 训练定制](#训练定制)
+  - [3.1 代码结构](#代码结构)
+  - [3.2 数据标注](#数据标注)
+  - [3.3 模型微调](#模型微调)
+  - [3.4 定制模型一键预测](#定制模型一键预测)
+  - [3.5 实验指标](#实验指标)
 
 <a name="模型简介"></a>
 
 ## 1. 模型简介
 
-信息抽取大模型（LLM-UIE）是 PaddleNLP 团队基于开源模型和高质量数据集构建的信息抽取大模型， 支持统一训练信息抽取任务包括命名实体识别（NER），关系抽取（RE）和事件抽取（EE）。模型共包含0.5B、1.5B、7B 和14B 共4个版本，以适配不同场景下信息抽取任务使用。在多个数据集（包含 Boson、CLUENER、CCIR2021等常见数据）相比 UIE 模型在 ACC 和F1指标上有大幅度提升。
+信息抽取大模型（LLM-UIE）是 PaddleNLP 团队基于开源模型和高质量数据集构建的信息抽取大模型， PaddleNLP基于百度 UIE 的建模思路，通过大模型的能力来训练并开源了一款面向中文通用信息抽取的大模型。 支持统一训练信息抽取任务包括命名实体识别（NER），关系抽取（RE）和事件抽取（EE）。模型共包含0.5B、1.5B、7B 和14B 共4个版本，以适配不同场景下信息抽取任务使用。在多个数据集（包含 Boson、CLUENER、CCIR2021等常见数据）相比 UIE 模型在 ACC 和F1指标上有大幅度提升。
 
 
-<a name="快速开始"></a>
-
-## 2. 快速开始
-
-可通过以下代码快速调用模型并进行推理
-
-```python
-from paddlenlp.transformers import AutoModelForCausalLM
-from paddlenlp.transformers import AutoTokenizer
-from paddlenlp.generation import GenerationConfig
-from paddlenlp.trl import llm_utils
-
-model_id = "paddlenlp/LLM-UIE-0114"
-
-model = AutoModelForCausalLM.from_pretrained(model_id, use_flash_attention=False)
-model.eval()
-tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
-generation_config = GenerationConfig.from_pretrained(model_id)
-
-
-template = """
-你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
- **句子开始**
- {sentence}
- **句子结束**
- **问题开始**
- {prompt}
- **问题结束**
- **回答开始**
- """
-
-sentences = [
-    "蒋经国在日记中也称蒋介石病逝时“天发雷电，继之以倾盆大雨，正是所谓风云异色，天地同哀",
-    "默克尔今年9月将再参选谋求第三任期。",
-    "如有单位或个人对公示人员申请廉租住房保障资格有异议的，可以信件和电话的形式向市住建局举报，监督电话：5641079",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
-    "张三,30岁,13854488452,男,北京市海淀区西北旺",
-]
-
-prompts = [
-    "人名",
-    "人名",
-    "电话号码",
-    "姓名，年龄，手机号码，性别，地址",
-    "姓名",
-    "年龄",
-    "手机号码",
-    "性别",
-    "地址",
-    "姓名",
-]
-
-inputs = [template.format(sentence=sentence, prompt=prompt) for sentence, prompt in zip(sentences, prompts)]
-inputs = [tokenizer.apply_chat_template(sentence, tokenize=False) for sentence in inputs]
-input_features = tokenizer(
-    inputs,
-    max_length=2048,
-    return_position_ids=False,
-    truncation=True,
-    truncation_side="left",
-    padding=True,
-    return_tensors="pd",
-    add_special_tokens=False,
-)
-
-outputs = model.generate(
-    **input_features,
-    max_new_tokens=200,
-    bos_token_id=tokenizer.bos_token_id,
-    eos_token_id=llm_utils.get_eos_token_id(tokenizer, generation_config),
-    pad_token_id=tokenizer.pad_token_id,
-    decode_strategy="sampling",
-    temperature=1.0,
-    top_k=1,
-    top_p=1.0,
-    repetition_penalty=1.0,
-)
-
-
-def get_clean_entity(text):
-    ind1 = text.find("\n **回答结束**\n\n")
-    if ind1 != -1:
-        pred = text[:ind1]
-    else:
-        pred = text
-    return pred
-
-
-results = tokenizer.batch_decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
-results = [get_clean_entity(result) for result in results]
-
-for sentence, prompt, result in zip(sentences, prompts, results):
-    print("-" * 50)
-    print(f"Sentence: {sentence}")
-    print(f"Prompt: {prompt}")
-    print(f"Result: {result}")
-```
 
 <a name="开箱即用"></a>
 
-## 3. 开箱即用
+## 2. 开箱即用
 
 ```paddlenlp.Taskflow```提供通用信息抽取、评价观点抽取等能力，可抽取多种类型的信息，包括但不限于命名实体识别（如人名、地名、机构名等）、关系（如电影的导演、歌曲的发行时间等）、事件（如某路口发生车祸、某地发生地震等）、以及评价维度、观点词、情感倾向等信息。用户可以使用自然语言自定义抽取目标，无需训练即可统一抽取输入文本中的对应信息。**实现开箱即用，并满足各类信息抽取需求**
 
 <a name="实体抽取"></a>
 
-#### 3.1 实体抽取
+#### 2.1 实体抽取
 
   命名实体识别（Named Entity Recognition，简称 NER），是指识别文本中具有特定意义的实体。在开放域信息抽取中，抽取的类别没有限制，用户可以自己定义。
 
@@ -166,7 +63,7 @@ for sentence, prompt, result in zip(sentences, prompts, results):
 
 <a name="关系抽取"></a>
 
-#### 3.2 关系抽取
+#### 2.2 关系抽取
 
   关系抽取（Relation Extraction，简称 RE），是指从文本中识别实体并抽取实体之间的语义关系，进而获取三元组信息，即<主体，谓语，客体>。
 
@@ -197,7 +94,7 @@ for sentence, prompt, result in zip(sentences, prompts, results):
 
 <a name="模型选择"></a>
 
-#### 3.3 模型选择
+#### 2.3 模型选择
 
 - 多模型选择，满足精度、速度要求
 
@@ -210,7 +107,7 @@ for sentence, prompt, result in zip(sentences, prompts, results):
 
 <a name="更多配置"></a>
 
-#### 3.4 更多配置
+#### 2.4 更多配置
 
 ```python
 >>> from paddlenlp import Taskflow
@@ -229,15 +126,101 @@ for sentence, prompt, result in zip(sentences, prompts, results):
 * `model`：选择任务使用的模型，默认为`uie-llm-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`, `uie-llm-7b`, `uie-llm-14b`。
 * `precision`：选择模型精度，默认为`float16`，可选有`float16`、`bfloat16`和`float32`和。如果选择`float16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。如果选择`bfloat16`，能有效加速处理大模型和批量数据，尤其与混合精度结合使用时性能表现更优。但需确保硬件和软件环境支持该精度。支持 `bfloat16`的硬件包括 NVIDIA A100 和 H100 GPU，同时需要确保使用 CUDA>=11.2、cuDNN>=8.1.1 等软件环境。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
 
+
+除此之外，也可通过以下代码快速调用模型并进行推理
+
+```python
+from paddlenlp.transformers import AutoModelForCausalLM
+from paddlenlp.transformers import AutoTokenizer
+from paddlenlp.generation import GenerationConfig
+from paddlenlp.trl import llm_utils
+
+model_id = "paddlenlp/LLM-UIE-0114"
+
+model = AutoModelForCausalLM.from_pretrained(model_id, use_flash_attention=False)
+model.eval()
+tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
+generation_config = GenerationConfig.from_pretrained(model_id)
+
+
+template = """
+你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
+ **句子开始**
+ {sentence}
+ **句子结束**
+ **问题开始**
+ {prompt}
+ **问题结束**
+ **回答开始**
+ """
+
+sentences = [
+    "如有单位或个人对公示人员申请廉租住房保障资格有异议的，可以信件和电话的形式向市住建局举报，监督电话：5641079",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "张三,30岁,13854488452,男,北京市海淀区西北旺",
+]
+
+prompts = [
+    "电话号码",
+    "姓名，年龄，手机号码，性别，地址",
+    "姓名",
+]
+
+inputs = [template.format(sentence=sentence, prompt=prompt) for sentence, prompt in zip(sentences, prompts)]
+inputs = [tokenizer.apply_chat_template(sentence, tokenize=False) for sentence in inputs]
+input_features = tokenizer(
+    inputs,
+    max_length=512,
+    return_position_ids=False,
+    truncation=True,
+    truncation_side="left",
+    padding=True,
+    return_tensors="pd",
+    add_special_tokens=False,
+)
+
+outputs = model.generate(
+    **input_features,
+    max_new_tokens=200,
+    bos_token_id=tokenizer.bos_token_id,
+    eos_token_id=llm_utils.get_eos_token_id(tokenizer, generation_config),
+    pad_token_id=tokenizer.pad_token_id,
+    decode_strategy="greedy_search",
+    temperature=1.0,
+    top_k=1,
+    top_p=1.0,
+    repetition_penalty=1.0,
+)
+
+
+def get_clean_entity(text):
+    ind1 = text.find("\n **回答结束**\n\n")
+    if ind1 != -1:
+        pred = text[:ind1]
+    else:
+        pred = text
+    return pred
+
+
+results = tokenizer.batch_decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+results = [get_clean_entity(result) for result in results]
+
+for sentence, prompt, result in zip(sentences, prompts, results):
+    print("-" * 50)
+    print(f"Sentence: {sentence}")
+    print(f"Prompt: {prompt}")
+    print(f"Result: {result}")
+```
+
 <a name="训练定制"></a>
 
-## 4. 训练定制
+## 3. 训练定制
 
 对于简单的抽取目标可以直接使用 ```paddlenlp.Taskflow```实现零样本（zero-shot）抽取，对于细分场景我们推荐使用轻定制功能（标注少量数据进行模型微调）以进一步提升效果。下面通过`报销工单信息抽取`的例子展示如何通过5条训练数据进行 UIE 模型微调。
 
 <a name="代码结构"></a>
 
-#### 4.1 代码结构
+#### 3.1 代码结构
 
 ```shell
 .
@@ -249,7 +232,7 @@ for sentence, prompt, result in zip(sentences, prompts, results):
 
 <a name="数据标注"></a>
 
-#### 4.2 数据标注
+#### 3.2 数据标注
 
 我们推荐使用数据标注平台[doccano](https://github.com/doccano/doccano) 进行数据标注，本示例也打通了从标注到训练的通道，即 doccano 导出数据后可通过[doccano.py](./doccano.py)脚本轻松将数据转换为输入模型时需要的形式，实现无缝衔接。标注方法的详细介绍请参考[doccano 数据标注指南](doccano.md)。
 
@@ -292,7 +275,7 @@ python doccano.py \
 
 - ``doccano_file``: 从 doccano 导出的数据标注文件。
 - ``save_dir``: 训练数据的保存目录，默认存储在``data``目录下。
-- ``negative_ratio``: 最大负例比例，该参数只对抽取类型任务有效，适当构造负例可提升模型效果。负例数量和实际的标签数量有关，最大负例数量 = negative_ratio * 正例数量。该参数只对训练集有效，默认为5。为了保证评估指标的准确性，验证集和测试集默认构造全正例。
+- ``negative_ratio``: 最大负例比例，该参数只对抽取类型任务有效，适当构造负例可提升模型效果。负例数量和实际的标签数量有关，最大负例数量 = negative_ratio * 正例数量。该参数只对训练集有效，默认为5。
 - ``splits``: 划分数据集时训练集、验证集所占的比例。默认为[0.8, 0.1, 0.1]表示按照``8:1:1``的比例将数据划分为训练集、验证集和测试集。
 - ``task_type``: 选择任务类型，目前只有信息抽取这一种任务。
 - ``is_shuffle``: 是否对数据集进行随机打散，默认为 True。
@@ -308,7 +291,7 @@ python doccano.py \
 
 <a name="模型微调"></a>
 
-#### 4.3 模型微调
+#### 3.3 模型微调
 
 推荐使用 [大模型精调](../../docs/finetune.md) 对模型进行微调。只需输入模型、数据集等就可以高效快速地进行微调和模型压缩等任务，可以一键启动多卡训练、混合精度训练、梯度累积、断点重启、日志显示等功能，并且针对训练过程的通用训练配置做了封装，比如：优化器、学习率调度等。
 
@@ -325,8 +308,8 @@ python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/qw
 sft_argument.json 的参考配置如下：
 ```shell
 {
-    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
-    "dataset_name_or_path": "./Application/information_extraction/data",
+    "model_name_or_path": "paddlenlp/LLM-UIE-0114",
+    "dataset_name_or_path": "./application/information_extraction/data",
     "output_dir": "./checkpoints/ie_ckpts",
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 1,
@@ -348,7 +331,7 @@ sft_argument.json 的参考配置如下：
     "load_best_model_at_end": true,
     "eval_with_do_generation": false,
     "metric_for_best_model": "accuracy",
-    "recompute": true,
+    "recompute": false,
     "save_total_limit": 1,
     "tensor_parallel_degree": 1,
     "pipeline_parallel_degree": 1,
@@ -363,7 +346,7 @@ sft_argument.json 的参考配置如下：
 
 <a name="定制模型一键预测"></a>
 
-#### 4.4 定制模型一键预测
+#### 3.4 定制模型一键预测
 
 1. 使用 PaddleNLP的高性能 predictor进行快速推理
 - 内置全环节融合算子策略
@@ -372,11 +355,11 @@ sft_argument.json 的参考配置如下：
 
 ```shell
 # llm目录下
-python .predict/predictor.py \
+python predict/predictor.py \
     --model_name_or_path ./checkpoints/ie_ckpts \
     --dtype float16 \
-    --data_file ./Application/information_extraction/data/test.json \
-    --output_file ./output/output.json \
+    --data_file ./application/information_extraction/data/test.json \
+    --output_file ./output.json \
     --src_length  512 \
     --max_length  20 \
     --batch_size  4 \
@@ -393,7 +376,7 @@ python .predict/predictor.py \
 
 >>> schema = ['出发地', '目的地', '费用', '时间']
 # 设定抽取目标和定制化模型权重路径
->>> my_ie = Taskflow("information_extraction", schema=schema, model='uie-llm-0.5b',precision = "float16", task_path='./checkpoints/sft_ckpts')
+>>> my_ie = Taskflow("information_extraction", schema=schema, model='uie-llm-0.5b',precision = "float16", task_path='./checkpoints/ie_ckpts')
 >>> pprint(my_ie("城市内交通费7月5日金额114广州至佛山"))
 [{'出发地': [{'text': '广州'}],
   '时间': [{'text': '7月5日'}],
@@ -405,7 +388,7 @@ python .predict/predictor.py \
 
 <a name="实验指标"></a>
 
-#### 4.5 实验指标
+#### 3.5 实验指标
 
 <!-- 我们在互联网、医疗、金融三大垂类自建测试集上进行了实验：
 

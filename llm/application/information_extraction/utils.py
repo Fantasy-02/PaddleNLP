@@ -1,4 +1,4 @@
-# Copyright (c) 2022 PaddlePaddle Authors. All Rights Reserved.
+# Copyright (c) 2024 PaddlePaddle Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -84,7 +84,7 @@ def add_entity_negative_example(examples, texts, prompts, label_set, negative_ra
 
             for idx in idxs:
                 src = prompt_format.format_map({"sentence": texts[i], "prompt": redundants[idx]})
-                negative_result = {"src": [src], "tgt": ["无相应实体"]}
+                negative_result = {"src": src, "tgt": "无相应实体\n**回答结束**\n\n"}
                 # negative_result = {"content": texts[i], "result_list": [], "prompt": redundants[idx]}
                 negative_examples.append(negative_result)
             positive_examples.extend(examples[i])
@@ -112,12 +112,12 @@ def add_relation_negative_example(redundants, text, num_positive, ratio):
 
     for idx in idxs:
         src = prompt_format.format_map({"sentence": text, "prompt": redundants[idx]})
-        negative_result = {"src": [src], "tgt": ["无相应实体"]}
+        negative_result = {"src": src, "tgt": "无相应实体\n**回答结束**\n\n"}
         added_example.append(negative_result)
 
     for rest_idx in rest_idxs:
         src = prompt_format.format_map({"sentence": text, "prompt": redundants[idx]})
-        negative_result = {"src": [src], "tgt": ["无相应实体"]}
+        negative_result = {"src": src, "tgt": "无相应实体\n**回答结束**\n\n"}
         rest_example.append(negative_result)
 
     return added_example, rest_example
@@ -138,7 +138,7 @@ def add_full_negative_example(examples, texts, relation_prompts, predicate_set, 
                         prompt = predicate + " of " + subject
                     if prompt not in relation_prompt:
                         src = prompt_format.format_map({"sentence": texts[i], "prompt": prompt})
-                        negative_result = {"src": [src], "tgt": ["无相应实体"]}
+                        negative_result = {"src": src, "tgt": "无相应实体\n**回答结束**\n\n"}
                         negative_sample.append(negative_result)
             examples[i].extend(negative_sample)
             pbar.update(1)
@@ -192,7 +192,7 @@ def convert_llm_examples(
                 src = prompt_format.format_map({"sentence": text, "prompt": entity_label})
 
                 if entity_label not in entity_example_map.keys():
-                    entity_example_map[entity_label] = {"src": [src], "tgt": [entity_name]}
+                    entity_example_map[entity_label] = {"src": src, "tgt": [entity_name]}
                 else:
                     entity_example_map[entity_label]["tgt"].append(entity_name)
 
@@ -203,7 +203,7 @@ def convert_llm_examples(
                 entity_prompt.append(entity_label)
 
             for label, v in entity_example_map.items():
-                v["tgt"] = [",".join(v["tgt"]) + "\n**回答结束**\n\n"]
+                v["tgt"] = ",".join(v["tgt"]) + "\n**回答结束**\n\n"
                 entity_example.append(v)
             entity_examples.append(entity_example)
             entity_prompts.append(entity_prompt)
@@ -237,7 +237,7 @@ def convert_llm_examples(
                 predicates.append(predicate)
 
                 if prompt not in relation_example_map.keys():
-                    relation_example_map[prompt] = {"src": [src], "tgt": [entity_map[object_id]["name"]]}
+                    relation_example_map[prompt] = {"src": src, "tgt": [entity_map[object_id]["name"]]}
                 else:
                     relation_example_map[prompt]["tgt"].append(entity_map[object_id]["name"])
 
@@ -246,7 +246,7 @@ def convert_llm_examples(
                 relation_prompt.append(prompt)
 
             for v in relation_example_map.values():
-                v["tgt"] = [",".join(v["tgt"]) + "\n**回答结束**\n\n"]
+                v["tgt"] = ",".join(v["tgt"]) + "\n**回答结束**\n\n"
                 relation_example.append(v)
 
             relation_examples.append(relation_example)

@@ -24,7 +24,7 @@
 
 ## 2. 项目创建
 
-UIE 支持抽取与分类两种类型的任务，根据实际需要创建一个新的项目：
+LLM-UIE 支持抽取与分类两种类型的任务，根据实际需要创建一个新的项目：
 
 #### 2.1 抽取式任务项目创建
 
@@ -161,62 +161,6 @@ schema = {
 }
 ```
 
-#### 5.4 评价观点抽取
-
-评论观点抽取，是指抽取文本中包含的评价维度、观点词。
-
-标注示例：
-
-<div align="center">
-    <img src=https://user-images.githubusercontent.com/40840292/167249035-6c16c68e-d94e-4a37-8489-111ee65924a3.png height=190 hspace='20'/>
-</div>
-
-示例中定义了`评价维度`和`观点词`两种 Span 标签，以及`观点词`一种 Relation 标签。Relation 标签**由评价维度指向观点词**。
-
-该标注示例对应的 schema 为：
-
-```text
-schema = {
-    '评价维度': '观点词'
-}
-```
-
-#### 5.5 句子级分类任务
-
-标注示例：
-
-<div align="center">
-    <img src=https://user-images.githubusercontent.com/40840292/167249572-48a04c4f-ab79-47ef-a138-798f4243f520.png height=100 hspace='20'/>
-</div>
-
-示例中定义了`正向`和`负向`两种类别标签对文本的情感倾向进行分类。
-
-该标注示例对应的 schema 为：
-
-```text
-schema = '情感倾向[正向，负向]'
-```
-
-#### 5.6 实体/评价维度级分类任务
-
-<div align="center">
-    <img src=https://user-images.githubusercontent.com/40840292/172628328-878923d7-8c5d-4667-a0e2-b92bce89b47c.png height=200 hspace='20'/>
-</div>
-
-标注示例：
-
-示例中定义了`评价维度##正向`，`评价维度##负向`和`观点词`三种 Span 标签以及`观点词`一种 Relation 标签。其中，`##`是实体类别/评价维度与分类标签的分隔符（可通过 doccano.py 中的 separator 参数自定义）。
-
-该标注示例对应的 schema 为：
-
-```text
-schema = {
-    '评价维度': [
-        '观点词',
-        '情感倾向[正向，负向]'
-    ]
-}
-```
 
 <a name="数据导出"></a>
 
@@ -326,56 +270,20 @@ schema = {
 ```shell
 python doccano.py \
     --doccano_file ./data/doccano_ext.json \
-    --task_type "ext" \
     --save_dir ./data \
     --negative_ratio 5
-```
-
-#### 7.2 句子级分类任务数据转换
-
-- 当标注完成后，在 doccano 平台上导出 `JSON` 形式的文件，并将其重命名为 `doccano_cls.json` 后，放入 `./data` 目录下。
-- 在数据转换阶段，我们会自动构造用于模型训练的 prompt 信息。例如句子级情感分类中，prompt 为``情感倾向[正向,负向]``，可以通过`prompt_prefix`和`options`参数进行声明。
-- 通过 [doccano.py](./doccano.py) 脚本进行数据形式转换，然后便可以开始进行相应模型训练。
-
-```shell
-python doccano.py \
-    --doccano_file ./data/doccano_cls.json \
-    --task_type "cls" \
-    --save_dir ./data \
-    --splits 0.8 0.1 0.1 \
-    --prompt_prefix "情感倾向" \
-    --options "正向" "负向"
-```
-
-#### 7.3 实体/评价维度级分类任务数据转换
-
-- 当标注完成后，在 doccano 平台上导出 `JSONL(relation)` 形式的文件，并将其重命名为 `doccano_ext.json` 后，放入 `./data` 目录下。
-- 在数据转换阶段，我们会自动构造用于模型训练的 prompt 信息。例如评价维度级情感分类中，prompt 为``XXX 的情感倾向[正向,负向]``，可以通过`prompt_prefix`和`options`参数进行声明。
-- 通过 [doccano.py](./doccano.py) 脚本进行数据形式转换，然后便可以开始进行相应模型训练。
-
-```shell
-python doccano.py \
-    --doccano_file ./data/doccano_ext.json \
-    --task_type "ext" \
-    --save_dir ./data \
-    --splits 0.8 0.1 0.1 \
-    --prompt_prefix "情感倾向" \
-    --options "正向" "负向" \
-    --separator "##"
 ```
 
 可配置参数说明：
 
 - ``doccano_file``: 从 doccano 导出的数据标注文件。
 - ``save_dir``: 训练数据的保存目录，默认存储在``data``目录下。
-- ``negative_ratio``: 最大负例比例，该参数只对抽取类型任务有效，适当构造负例可提升模型效果。负例数量和实际的标签数量有关，最大负例数量 = negative_ratio * 正例数量。该参数只对训练集有效，默认为5。为了保证评估指标的准确性，验证集和测试集默认构造全负例。
+- ``negative_ratio``: 最大负例比例，该参数只对抽取类型任务有效，适当构造负例可提升模型效果。负例数量和实际的标签数量有关，最大负例数量 = negative_ratio * 正例数量。该参数只对训练集有效，默认为5。为了保证评估指标的准确性，验证集和测试集默认构造全正例。
 - ``splits``: 划分数据集时训练集、验证集所占的比例。默认为[0.8, 0.1, 0.1]表示按照``8:1:1``的比例将数据划分为训练集、验证集和测试集。
-- ``task_type``: 选择任务类型，可选有抽取和分类两种类型的任务。
-- ``options``: 指定分类任务的类别标签，该参数只对分类类型任务有效。默认为["正向", "负向"]。
-- ``prompt_prefix``: 声明分类任务的 prompt 前缀信息，该参数只对分类类型任务有效。默认为"情感倾向"。
+- ``task_type``: 选择任务类型，目前只有信息抽取这一种任务。
 - ``is_shuffle``: 是否对数据集进行随机打散，默认为 True。
 - ``seed``: 随机种子，默认为1000.
-- ``separator``: 实体类别/评价维度与分类标签的分隔符，该参数只对实体/评价维度级分类任务有效。默认为"##"。
+- ``schema_lang``: 选择 schema 的语言，可选有`ch`和`en`。默认为`ch`，英文数据集请选择`en`。
 
 备注：
 - 默认情况下 [doccano.py](./doccano.py) 脚本会按照比例将数据划分为 train/dev/test 数据集

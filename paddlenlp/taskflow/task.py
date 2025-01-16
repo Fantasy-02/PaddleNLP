@@ -216,6 +216,7 @@ class Task(metaclass=abc.ABCMeta):
             # TODO(linjieccc): enable after fixed
             self._config.delete_pass("embedding_eltwise_layernorm_fuse_pass")
             self._config.delete_pass("fused_multi_transformer_encoder_pass")
+            self._config.delete_pass("fused_rotary_position_embedding_pass")
 
         self._config.switch_ir_optim(True)
         self._config.enable_new_executor()
@@ -224,7 +225,6 @@ class Task(metaclass=abc.ABCMeta):
         self._config.switch_use_feed_fetch_ops(False)
         self._config.disable_glog_info()
         self._config.enable_memory_optim()
-        self._config.delete_pass("fused_rotary_position_embedding_pass")
         # TODO(linjieccc): some temporary settings and will be remove in future
         # after fixed
         if self.task in [

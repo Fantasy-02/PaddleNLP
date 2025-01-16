@@ -139,11 +139,11 @@ class UIELLMTask(Task):
         self.kwargs["generation_task"] = task
         self._tgt_length = kwargs.get("tgt_length", 20)
         # Token max length
-        self._max_seq_length = kwargs.get("max_seq_length", 2048)
+        self._max_seq_length = kwargs.get("max_seq_length", 512)
         self._top_k = kwargs.get("top_k", 1)
         self._top_p = kwargs.get("top_p", 1.0)
         self._temperature = kwargs.get("temperature", 1.0)
-        self._decode_strategy = kwargs.get("decode_strategy", "sampling")
+        self._decode_strategy = kwargs.get("decode_strategy", "greedy_search")
         self._num_return_sequences = kwargs.get("num_return_sequences", 1)
         self._prompt = LLM_IE_PROMPT
 
