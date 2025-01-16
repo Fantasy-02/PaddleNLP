@@ -338,9 +338,14 @@ class QWenAttention(nn.Layer):
             # layer past[0] shape: bs * seq_len * head_num * dim
             kv_seq_len += layer_past[0].shape[1]
         if self.use_dynamic_ntk and kv_seq_len == hidden_states.shape[1] and not self.training:
-            context_value = paddle.log(kv_seq_len / self.seq_length, 2) + 1
-            ntk_alpha = 2 ** paddle.ceil(context_value) - 1
-            ntk_alpha = paddle.maximum(ntk_alpha, paddle.full_like(ntk_alpha, 1))
+            if paddle.in_dynamic_mode():
+                context_value = math.log(kv_seq_len / self.seq_length, 2) + 1
+                ntk_alpha = 2 ** math.ceil(context_value) - 1
+                ntk_alpha = max(ntk_alpha, 1)
+            else:
+                context_value = paddle.log(kv_seq_len / self.seq_length, 2) + 1
+                ntk_alpha = 2 ** paddle.ceil(context_value) - 1
+                ntk_alpha = paddle.maximum(ntk_alpha, paddle.full_like(ntk_alpha, 1))
             self._ntk_cached = ntk_alpha
         else:
             ntk_alpha = self._ntk_cached
