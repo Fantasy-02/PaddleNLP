@@ -231,8 +231,12 @@ class UIELLMTask(Task):
         inputs = [self._prompt.format(sentence=dic["text"], prompt=dic["prompt"]) for dic in inputs]
         batch_size = self.kwargs["batch_size"] if "batch_size" in self.kwargs else 1
         batches = self._batchify(inputs, batch_size)
+        print(batches)
         examples = []
         for input_text in batches:
+            if self._tokenizer.chat_template is not None:
+                input_text = [input_text] if isinstance(input_text, str) else input_text
+                input_text = [self._tokenizer.apply_chat_template(sentence, tokenize=False) for sentence in input_text]
             tokenized_output = self._tokenizer(
                 input_text,
                 return_tensors="pd",
