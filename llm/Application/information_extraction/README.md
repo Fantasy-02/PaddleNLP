@@ -3,34 +3,129 @@
  **目录**
 
 - [1. 模型简介](#模型简介)
-- [2. 应用示例](#应用示例)
+- [2. 快速开始](#快速开始)
 - [3. 开箱即用](#开箱即用)
   - [3.1 实体抽取](#实体抽取)
   - [3.2 关系抽取](#关系抽取)
-  - [3.3 事件抽取](#事件抽取)
-  - [3.4 模型选择](#模型选择)
-  - [3.5 更多配置](#更多配置)
+  - [3.3 模型选择](#模型选择)
+  - [3.4 更多配置](#更多配置)
 - [4. 训练定制](#训练定制)
   - [4.1 代码结构](#代码结构)
   - [4.2 数据标注](#数据标注)
   - [4.3 模型微调](#模型微调)
   - [4.4 模型推理](#模型推理)
   - [4.5 定制模型一键预测](#定制模型一键预测)
-  - [4.6 模型快速服务化部署](#模型快速服务化部署)
-  - [4.7 实验指标](#实验指标)
-  - [4.8 模型部署](#模型部署)
+  - [4.6 实验指标](#实验指标)
 
 <a name="模型简介"></a>
 
 ## 1. 模型简介
 
-Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该框架实现了实体抽取、关系抽取、事件抽取、情感分析等任务的统一建模，并使得不同任务间具备良好的迁移和泛化能力。然而，该模型在零样本场景下的表现仍存在不足。为此，PaddleNLP 借鉴 UIE 的方法，基于 Qwen2.5-0.5B 预训练模型，训练并开源了一款面向中文通用信息抽取的大模型。
+信息抽取大模型（LLM-UIE）是 PaddleNLP 团队基于开源模型和高质量数据集构建的信息抽取大模型， 支持统一训练信息抽取任务包括命名实体识别（NER），关系抽取（RE）和事件抽取（EE）。模型共包含0.5B、1.5B、7B 和14B 共4个版本，以适配不同场景下信息抽取任务使用。在多个数据集（包含 Boson、CLUENER、CCIR2021等常见数据）相比 UIE 模型在 ACC 和F1指标上有大幅度提升。
 
 
+<a name="快速开始"></a>
 
-## 2. 应用示例
+## 2. 快速开始
+
+可通过以下代码快速调用模型并进行推理
+
+```python
+from paddlenlp.transformers import AutoModelForCausalLM
+from paddlenlp.transformers import AutoTokenizer
+from paddlenlp.generation import GenerationConfig
+from paddlenlp.trl import llm_utils
+
+model_id = "paddlenlp/LLM-UIE-0114"
+
+model = AutoModelForCausalLM.from_pretrained(model_id, use_flash_attention=False)
+model.eval()
+tokenizer = AutoTokenizer.from_pretrained(model_id, padding_side="left")
+generation_config = GenerationConfig.from_pretrained(model_id)
 
 
+template = """
+你是一个阅读理解专家，请提取所给句子与问题，提取实体。请注意，如果存在实体，则一定在原句中逐字出现，请输出对应实体的原文，不要进行额外修改；如果无法提取，请输出“无相应实体”。
+ **句子开始**
+ {sentence}
+ **句子结束**
+ **问题开始**
+ {prompt}
+ **问题结束**
+ **回答开始**
+ """
+
+sentences = [
+    "蒋经国在日记中也称蒋介石病逝时“天发雷电，继之以倾盆大雨，正是所谓风云异色，天地同哀",
+    "默克尔今年9月将再参选谋求第三任期。",
+    "如有单位或个人对公示人员申请廉租住房保障资格有异议的，可以信件和电话的形式向市住建局举报，监督电话：5641079",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "姓名：张三，年龄：30岁，手机：13854488452，性别：男，家庭住址：北京市海淀区西北旺",
+    "张三,30岁,13854488452,男,北京市海淀区西北旺",
+]
+
+prompts = [
+    "人名",
+    "人名",
+    "电话号码",
+    "姓名，年龄，手机号码，性别，地址",
+    "姓名",
+    "年龄",
+    "手机号码",
+    "性别",
+    "地址",
+    "姓名",
+]
+
+inputs = [template.format(sentence=sentence, prompt=prompt) for sentence, prompt in zip(sentences, prompts)]
+inputs = [tokenizer.apply_chat_template(sentence, tokenize=False) for sentence in inputs]
+input_features = tokenizer(
+    inputs,
+    max_length=2048,
+    return_position_ids=False,
+    truncation=True,
+    truncation_side="left",
+    padding=True,
+    return_tensors="pd",
+    add_special_tokens=False,
+)
+
+outputs = model.generate(
+    **input_features,
+    max_new_tokens=200,
+    bos_token_id=tokenizer.bos_token_id,
+    eos_token_id=llm_utils.get_eos_token_id(tokenizer, generation_config),
+    pad_token_id=tokenizer.pad_token_id,
+    decode_strategy="sampling",
+    temperature=1.0,
+    top_k=1,
+    top_p=1.0,
+    repetition_penalty=1.0,
+)
+
+
+def get_clean_entity(text):
+    ind1 = text.find("\n **回答结束**\n\n")
+    if ind1 != -1:
+        pred = text[:ind1]
+    else:
+        pred = text
+    return pred
+
+
+results = tokenizer.batch_decode(outputs[0], skip_special_tokens=True, clean_up_tokenization_spaces=False)
+results = [get_clean_entity(result) for result in results]
+
+for sentence, prompt, result in zip(sentences, prompts, results):
+    print("-" * 50)
+    print(f"Sentence: {sentence}")
+    print(f"Prompt: {prompt}")
+    print(f"Result: {result}")
+```
 
 <a name="开箱即用"></a>
 
@@ -61,7 +156,7 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
                   schema= ['时间', '选手', '赛事名称'],
                   schema_lang="zh",
                   batch_size=1,
-                  model='uie-llm-0.5b'）
+                  model='uie-llm-0.5b')
     pprint(ie("2月8日上午北京冬奥会自由式滑雪女子大跳台决赛中中国选手谷爱凌以188.25分获得金牌！")) # Better print results using pprint
     # 输出
     [{'时间': [{'text': '2月8日上午'}],
@@ -75,7 +170,7 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
 #### 3.2 关系抽取
 
   关系抽取（Relation Extraction，简称 RE），是指从文本中识别实体并抽取实体之间的语义关系，进而获取三元组信息，即<主体，谓语，客体>。
-  
+
   - 例如以"竞赛名称"作为抽取主体，抽取关系类型为"主办方"、"承办方"和"已举办次数", schema 构造如下：
 
     ```text
@@ -101,39 +196,8 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
             'text': '2022语言与智能技术竞赛'}]}]
     ```
 
-<a name="事件抽取"></a>
 
-#### 3.3 事件抽取
-
-  事件抽取 (Event Extraction, 简称 EE)，是指从自然语言文本中抽取预定义的事件触发词(Trigger)和事件论元(Argument)，组合为相应的事件结构化信息。
-
-  - 例如抽取的目标是"地震"事件的"地震强度"、"时间"、"震中位置"和"震源深度"这些信息，schema 构造如下：
-
-    ```text
-    {
-      '地震触发词': [
-        '地震强度',
-        '时间',
-        '震中位置',
-        '震源深度'
-      ]
-    }
-    ```
-
-    触发词的格式统一为`触发词`或``XX 触发词`，`XX`表示具体事件类型，上例中的事件类型是`地震`，则对应触发词为`地震触发词`。
-
-    调用示例：
-
-    ```python
-    >>> schema = {'地震触发词': ['地震强度', '时间', '震中位置', '震源深度']} # Define the schema for event extraction
-    >>> ie.set_schema(schema) # Reset schema
-    >>> ie('中国地震台网正式测定：5月16日06时08分在云南临沧市凤庆县(北纬24.34度，东经99.98度)发生3.5级地震，震源深度10千米。')
-    [{'地震触发词': [{'text': '地震', 'relations': {'地震强度': [{'text': '3.5级'}], '时间': [{'text': '5月16日06时08分'}], '震中位置': [{'text': '云南临沧市凤庆县(北纬24.34度，东经99.98度)'}], '震源深度': [{'text': '10千米'}]}}]}]
-    ```
-
-
-
-#### 3.4 模型选择
+#### 3.3 模型选择
 
 - 多模型选择，满足精度、速度要求
 
@@ -141,16 +205,16 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
   | :---: | :--------: | :--------: |
   | `uie-llm-0.5b` (默认)| 24-layers, 896-hidden, 14-heads | 中、英文 |
   | `uie-llm-1.5b` | 28-layers, 1536-hidden, 12-heads | 中、英文 |
+  | `uie-llm-7b` | 28-layers, 3584-hidden, 28-heads | 中、英文 |
+  | `uie-llm-14b` | 48-layers, 5120-hidden, 40-heads | 中、英文 |
 
-
-
-#### 3.5 更多配置
+#### 3.4 更多配置
 
 ```python
 >>> from paddlenlp import Taskflow
 
 >>> ie = Taskflow('information_extraction',
-                  schema = {'地震触发词': ['地震强度', '时间', '震中位置', '震源深度']},
+                  schema = {'竞赛名称': ['主办方', '承办方', '已举办次数']},
                   schema_lang="zh",
                   batch_size=1,
                   model='uie-llm-0.5b',
@@ -160,8 +224,9 @@ Yaojie Lu 等人在 ACL-2022中提出了通用信息抽取统一框架 UIE。该
 * `schema`：定义任务抽取目标，可参考开箱即用中不同任务的调用示例进行配置。
 * `schema_lang`：设置 schema 的语言，默认为`zh`, 可选有`zh`和`en`。因为中英 schema 的构造有所不同，因此需要指定 schema 的语言。
 * `batch_size`：批处理大小，请结合机器情况进行调整，默认为1。
-* `model`：选择任务使用的模型，默认为`uie-llm-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`。
+* `model`：选择任务使用的模型，默认为`uie-llm-0.5b`，可选有`uie-llm-0.5b`, `uie-llm-1.5b`, `uie-llm-7b`, `uie-llm-14b`。
 * `precision`：选择模型精度，默认为`float16`，可选有`float16`、`bfloat16`和`float32`和。如果选择`float16`，在 GPU 硬件环境下，请先确保机器正确安装 NVIDIA 相关驱动和基础软件，**确保 CUDA>=11.2，cuDNN>=8.1.1**，初次使用需按照提示安装相关依赖。其次，需要确保 GPU 设备的 CUDA 计算能力（CUDA Compute Capability）大于7.0，典型的设备包括 V100、T4、A10、A100、GTX 20系列和30系列显卡等。如果选择`bfloat16`，能有效加速处理大模型和批量数据，尤其与混合精度结合使用时性能表现更优。但需确保硬件和软件环境支持该精度。支持 `bfloat16`的硬件包括 NVIDIA A100 和 H100 GPU，同时需要确保使用 CUDA>=11.2、cuDNN>=8.1.1 等软件环境。更多关于 CUDA Compute Capability 和精度支持情况请参考 NVIDIA 文档：[GPU 硬件与支持精度对照表](https://docs.nvidia.com/deeplearning/tensorrt/archives/tensorrt-840-ea/support-matrix/index.html#hardware-precision-matrix)。
+
 <a name="训练定制"></a>
 
 ## 4. 训练定制
@@ -245,19 +310,21 @@ python doccano.py \
 
 推荐使用 [大模型精调](../docs/finetune.md) 对模型进行微调。只需输入模型、数据集等就可以高效快速地进行微调和模型压缩等任务，可以一键启动多卡训练、混合精度训练、梯度累积、断点重启、日志显示等功能，并且针对训练过程的通用训练配置做了封装，比如：优化器、学习率调度等。
 
-使用下面的命令，使用 `Qwen2.5-0.5B` 作为预训练模型进行模型微调，将微调后的模型保存至`$finetuned_model`：
+使用下面的命令，使用 `Qwen2.5-0.5B-Instruct` 作为预训练模型进行模型微调，将微调后的模型保存至`$finetuned_model`：
 
 如果在 GPU 环境中使用，可以指定 gpus 参数进行多卡训练：
 
 ```shell
-python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/sft_argument.json
+cd ../..
+# 返回llm目录
+python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/qwen/sft_argument.json
 ```
 
-sft_argument.json的参考配置如下：
+sft_argument.json 的参考配置如下：
 ```shell
 {
-    "model_name_or_path": "Qwen/Qwen2.5-0.5B",
-    "dataset_name_or_path": "./data",
+    "model_name_or_path": "Qwen/Qwen2.5-0.5B-Instruct",
+    "dataset_name_or_path": "./Application/information_extraction/data",
     "output_dir": "./checkpoints/ie_ckpts",
     "per_device_train_batch_size": 1,
     "gradient_accumulation_steps": 1,
@@ -298,15 +365,15 @@ sft_argument.json的参考配置如下：
 
 通过运行以下命令进行模型评估：
 ```shell
-python ./predictor.py \
+# llm目录下
+python .predict/predictor.py \
     --model_name_or_path ./checkpoints/ie_ckpts \
     --dtype float16 \
-    --data_file ./data/test.json \
-    --output_file ./output.json \
+    --data_file ./Application/information_extraction/data/test.json \
+    --output_file ./output/output.json \
     --src_length  512 \
     --max_length  20 \
     --batch_size  4 \
-    --chat_template None
 
 ```
 
@@ -331,19 +398,9 @@ python ./predictor.py \
   '费用': [{'text': '114'}]}]
 ```
 
-<a name="模型快速服务化部署"></a>
-
-
-<a name="模型快速服务化部署"></a>
-
-#### 4.6 模型快速服务化部署
-在 UIE 的服务化能力中我们提供基于 PaddleNLP SimpleServing 来搭建服务化能力，通过几行代码即可搭建服务化部署能力
-
-
-
 <a name="实验指标"></a>
 
-#### 4.7 实验指标
+#### 4.6 实验指标
 
 <!-- 我们在互联网、医疗、金融三大垂类自建测试集上进行了实验：
 
@@ -360,11 +417,3 @@ python ./predictor.py \
 </table>
 
 0-shot 表示无训练数据直接通过 ```paddlenlp.Taskflow```进行预测，5-shot 表示每个类别包含5条标注数据进行模型微调。**实验表明 UIE 在垂类场景可以通过少量数据（few-shot）进一步提升效果**。 -->
-
-
-<a name="模型部署"></a>
-
-#### 4.8 模型部署
-
-以下是 UIE-LLM Python 端的部署流程，包括环境准备、模型导出和使用示例。
-

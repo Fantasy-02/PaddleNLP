@@ -203,7 +203,7 @@ def convert_llm_examples(
                 entity_prompt.append(entity_label)
 
             for label, v in entity_example_map.items():
-                v["tgt"] = [",".join(v["tgt"])]
+                v["tgt"] = [",".join(v["tgt"]) + "\n**回答结束**\n\n"]
                 entity_example.append(v)
             entity_examples.append(entity_example)
             entity_prompts.append(entity_prompt)
@@ -246,7 +246,7 @@ def convert_llm_examples(
                 relation_prompt.append(prompt)
 
             for v in relation_example_map.values():
-                v["tgt"] = [",".join(v["tgt"])]
+                v["tgt"] = [",".join(v["tgt"]) + "\n**回答结束**\n\n"]
                 relation_example.append(v)
 
             relation_examples.append(relation_example)
