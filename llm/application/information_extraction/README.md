@@ -300,7 +300,7 @@ python doccano.py \
 如果在 GPU 环境中使用，可以指定 gpus 参数进行多卡训练：
 
 ```shell
-cd ../..
+cd ../../
 # 返回llm目录
 python -u  -m paddle.distributed.launch --gpus "0,1" run_finetune.py ./config/qwen/sft_argument.json
 ```

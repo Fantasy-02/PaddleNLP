@@ -333,6 +333,16 @@ TASKS = {
                 "hidden_size": 1536,
                 "task_flag": "information_extraction-uie-llm-1.5b",
             },
+            "uie-llm-7b": {
+                "task_class": UIELLMTask,
+                "hidden_size": 3584,
+                "task_flag": "information_extraction-uie-llm-7b",
+            },
+            "uie-llm-14b": {
+                "task_class": UIELLMTask,
+                "hidden_size": 5120,
+                "task_flag": "information_extraction-uie-llm-14b",
+            },
             "uie-base": {
                 "task_class": UIETask,
                 "hidden_size": 768,
@@ -735,8 +745,10 @@ TASKS = {
 }
 
 support_schema_list = [
-    "uie-llm-1.5b",
     "uie-llm-0.5b",
+    "uie-llm-1.5b",
+    "uie-llm-7b",
+    "uie-llm-14b",
     "uie-base",
     "uie-medium",
     "uie-mini",
